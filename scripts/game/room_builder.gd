@@ -314,8 +314,9 @@ static func door_gap_cells(size: Vector2i, doors: Variant) -> Dictionary:
 ## 门节点该放的位置（门洞正中央，压在墙线上）
 static func door_anchor(size: Vector2i, dir: int, origin: Vector2 = Vector2.ZERO) -> Vector2:
 	var tile: float = float(G.TILE_SIZE)
-	var cx: float = float(size.x) * 0.5 * tile
-	var cy: float = float(size.y) * 0.5 * tile
+	# 与 door_gap_cells 使用同样的整数中心，避免奇数尺寸房间出现半格偏差
+	var cx: float = float(int(size.x / 2)) * tile
+	var cy: float = float(int(size.y / 2)) * tile
 	match dir:
 		DIR_NORTH:
 			return origin + Vector2(cx, tile * 0.5)
