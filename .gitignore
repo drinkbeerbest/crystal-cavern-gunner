@@ -1,0 +1,12 @@
+# Godot 4 导入缓存与编辑器临时文件
+.godot/
+*.tmp
+
+# 素材生成脚本的中间产物
+tools/_out/
+tools/__pycache__/
+__pycache__/
+
+# 系统文件
+Thumbs.db
+.DS_Store

@@ -1,0 +1,53 @@
+; Engine configuration file.
+; 《晶窟枪魂 / Crystal Cavern Gunner》
+; 原创 2D 俯视角地牢射击游戏 - Godot 4.7 工程配置
+
+config_version=5
+
+[application]
+
+config/name="晶窟枪魂 Crystal Cavern Gunner"
+config/description="原创 2D 俯视角地牢射击游戏：随机房间探索、多武器射击、掉落与临时天赋、多阶段 Boss 战。"
+config/version="0.1.0"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://assets/icon.png"
+
+[gui]
+
+; 全局默认字体：工程内嵌的开源像素字体子集（覆盖全部游戏内可见文案，避免中文方块字）
+theme/custom_font="res://assets/fonts/pixel_ui.ttf"
+
+[autoload]
+
+InputCfg="*res://autoload/input_config.gd"
+EventBus="*res://autoload/event_bus.gd"
+SaveMgr="*res://autoload/save_manager.gd"
+GameState="*res://autoload/game_state.gd"
+AudioMgr="*res://autoload/audio_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="player"
+2d_physics/layer_3="enemy"
+2d_physics/layer_4="player_bullet"
+2d_physics/layer_5="enemy_bullet"
+2d_physics/layer_6="pickup"
+2d_physics/layer_7="interactable"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.055, 0.055, 0.085, 1)

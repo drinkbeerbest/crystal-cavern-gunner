@@ -1,0 +1,50 @@
+[
+  {
+    "time": 1789463365417,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "menu.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\menu.wav"
+  },
+  {
+    "time": 1789463365417,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "dungeon_1.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\dungeon_1.wav"
+  },
+  {
+    "time": 1789463365417,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "dungeon_2.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\dungeon_2.wav"
+  },
+  {
+    "time": 1789463365417,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "dungeon_3.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\dungeon_3.wav"
+  },
+  {
+    "time": 1789463365418,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "boss.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\boss.wav"
+  },
+  {
+    "time": 1789463365418,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "shop.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\shop.wav"
+  },
+  {
+    "time": 1789463365418,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "victory.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\victory.wav"
+  },
+  {
+    "time": 1789463365418,
+    "session": "ses_gffe5f5beacb67ffeJVR7s5EPbyF97m",
+    "filename": "gameover.wav",
+    "delivered": "D:\\game1\\assets\\audio\\bgm\\gameover.wav"
+  }
+]
