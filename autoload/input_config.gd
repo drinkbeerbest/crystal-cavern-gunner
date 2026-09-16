@@ -35,6 +35,8 @@ const _KEY_BINDINGS: Dictionary = {
 const _MOUSE_BINDINGS: Dictionary = {
 	"shoot": MOUSE_BUTTON_LEFT,
 	"aim_secondary": MOUSE_BUTTON_RIGHT,
+	"shop_next": MOUSE_BUTTON_WHEEL_DOWN,
+	"shop_prev": MOUSE_BUTTON_WHEEL_UP,
 }
 
 ## 需要在项目里存在的全部动作（供测试断言）
@@ -43,6 +45,7 @@ const ALL_ACTIONS: Array[String] = [
 	"shoot", "aim_secondary", "dash", "skill", "interact", "throw_bomb", "pause",
 	"weapon_1", "weapon_2", "weapon_3", "weapon_next", "weapon_prev",
 	"map", "confirm", "cancel", "debug_fps",
+	"shop_next", "shop_prev",
 ]
 
 const ACTION_DEADZONE: float = 0.2

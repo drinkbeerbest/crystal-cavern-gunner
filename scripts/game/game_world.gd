@@ -838,6 +838,12 @@ func _build_room_props(data: Dictionary) -> void:
 				shop_pad.stock = data["shop_stock"]
 				shop_pad.cursor = clampi(int(data.get("shop_cursor", 0)), 0, maxi(0, shop_pad.stock.size() - 1))
 			entity_root.add_child(shop_pad)
+			# 武器货架在 _ready 之后补充；只在首次进入这家店时上架，
+			# 并立即写回房间数据，防止反复进出导致武器越摆越多
+			if not data.has("shop_stock"):
+				shop_pad.restock_weapons(_room_rng(current_room_index + 9999), GameState.floor_index)
+				data["shop_stock"] = shop_pad.stock.duplicate(true)
+				data["shop_cursor"] = 0
 			shop_pad.purchased.connect(_on_shop_purchased)
 			shop_pad.denied.connect(_on_shop_denied)
 			shop_pad.stock_changed.connect(_on_shop_stock_changed.bind(data))
@@ -1150,8 +1156,10 @@ func _on_shop_purchased(_pad: ShopPad, offer: Dictionary) -> void:
 		"energy":
 			if player != null:
 				player.add_energy(player.max_energy())
-		"weapon":
-			var weapon: WeaponData = WeaponDB.random(_room_rng(current_room_index + 7717), GameState.floor_index)
+		"weapon", "weapon_specific":
+			var weapon: WeaponData = offer.get("weapon_data") as WeaponData
+			if weapon == null:
+				weapon = WeaponDB.random(_room_rng(current_room_index + 7717), GameState.floor_index)
 			if player != null and weapon != null:
 				player.add_weapon(weapon)
 				label = weapon.display_name

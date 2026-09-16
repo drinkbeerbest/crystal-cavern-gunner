@@ -11,6 +11,8 @@ const UI_SCALE: int = 2
 const LOGICAL_SIZE: Vector2 = Vector2(640, 360)
 const UI_DIR: String = "res://assets/ui/"
 
+const G = preload("res://scripts/core/game_const.gd")
+
 const COLOR_BG: Color = Color(0.045, 0.045, 0.075, 1.0)
 const COLOR_TITLE: Color = Color(1.0, 0.84, 0.42, 1.0)
 const COLOR_TEXT: Color = Color(0.88, 0.9, 0.96, 1.0)
@@ -20,6 +22,7 @@ var router: Node = null
 
 var _canvas: Control
 var _menu_root: Control
+var _floor_select_root: Control
 var _settings_root: Control
 var _start_button: Button
 var _continue_button: Button
@@ -34,7 +37,9 @@ func _ready() -> void:
 
 	_build_background()
 	_build_menu()
+	_build_floor_select()
 	_build_settings()
+	_floor_select_root.visible = false
 	_settings_root.visible = false
 	_refresh_continue()
 
@@ -99,8 +104,8 @@ func _build_menu() -> void:
 	_menu_button("设  置", box, _on_settings_pressed)
 	_menu_button("退出游戏", box, _on_quit_pressed)
 
-	var meta_text: String = "最高层数 %d · 累计 %d 局 · v%s" % [
-		int(GameState.best_floor), int(GameState.total_runs),
+	var meta_text: String = "最高层数 %d · 解锁至 %d 层 · 累计 %d 局 · v%s" % [
+		int(GameState.best_floor), int(GameState.unlocked_floor), int(GameState.total_runs),
 		str(ProjectSettings.get_setting("application/config/version", "0.1.0")),
 	]
 	_label(meta_text, Vector2(0, 322), Vector2(LOGICAL_SIZE.x, 10), 9, COLOR_DIM,
@@ -108,6 +113,45 @@ func _build_menu() -> void:
 
 	_hint_label = _label("Enter 开始 · Esc 退出设置", Vector2(0, 336), Vector2(LOGICAL_SIZE.x, 10),
 			9, Color(0.42, 0.46, 0.56, 1.0), _menu_root, HORIZONTAL_ALIGNMENT_CENTER)
+
+
+func _build_floor_select() -> void:
+	_floor_select_root = Control.new()
+	_floor_select_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_floor_select_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_canvas.add_child(_floor_select_root)
+
+	var panel := _nine_patch("panel_9.png", Vector2(LOGICAL_SIZE.x * 0.5 - 130, 44),
+			Vector2(260, 268), 6, _floor_select_root)
+	_label("选择关卡", Vector2(0, 12), Vector2(260, 14), 12, COLOR_TITLE, panel, HORIZONTAL_ALIGNMENT_CENTER)
+
+	var unlocked: int = GameState.unlocked_floor
+	var total: int = G.TOTAL_FLOORS
+	var row: float = 42.0
+	for i: int in range(1, total + 1):
+		var btn := _pixel_button("第 %d 层" % i)
+		btn.custom_minimum_size = Vector2(120, 22)
+		btn.position = Vector2((260 - 120) * 0.5, row)
+		btn.size = Vector2(120, 22)
+		if i > unlocked:
+			btn.disabled = true
+			btn.text += "（未解锁）"
+			btn.add_theme_color_override("font_disabled_color", Color(0.5, 0.5, 0.55, 1.0))
+		else:
+			var start_floor: int = i
+			btn.pressed.connect(func() -> void:
+				AudioMgr.play_sfx("ui_click")
+				if router != null and router.has_method("start_new_run"):
+					router.call("start_new_run", 0, start_floor)
+			)
+		panel.add_child(btn)
+		row += 28.0
+
+	var back := _pixel_button("返  回")
+	back.position = Vector2((260 - 96) * 0.5, 232)
+	back.size = Vector2(96, 22)
+	panel.add_child(back)
+	back.pressed.connect(_on_floor_select_back)
 
 
 func _build_settings() -> void:
@@ -267,6 +311,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_pressed() or event.is_echo():
 		return
 	if event.is_action_pressed("cancel") or event.is_action_pressed("pause"):
+		if _floor_select_root.visible:
+			_on_floor_select_back()
+			get_viewport().set_input_as_handled()
+			return
 		if _settings_root.visible:
 			_close_settings()
 			get_viewport().set_input_as_handled()
@@ -274,8 +322,18 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_start_pressed() -> void:
 	AudioMgr.play_sfx("ui_click")
-	if router != null and router.has_method("start_new_run"):
-		router.call("start_new_run", 0)
+	_menu_root.visible = false
+	_floor_select_root.visible = true
+	_set_hint("选择已解锁的起始关卡 · Esc 返回")
+
+
+func _on_floor_select_back() -> void:
+	AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+	_floor_select_root.visible = false
+	_menu_root.visible = true
+	_set_hint("Enter 开始 · Esc 退出设置")
+	if _start_button != null:
+		_start_button.grab_focus()
 
 
 func _on_continue_pressed() -> void:

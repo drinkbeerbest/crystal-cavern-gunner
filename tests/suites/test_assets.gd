@@ -29,8 +29,8 @@ const EXPECT_COUNTS: Dictionary = {
 	"fx": 62,
 	"pickups": 41,
 	"ui": 49,
-	"ui/weapons": 8,
-	"weapons": 8,
+	"ui/weapons": 12,
+	"weapons": 12,
 	"audio/sfx": 51,
 	"audio/bgm": 8,
 }
@@ -38,6 +38,7 @@ const EXPECT_COUNTS: Dictionary = {
 const PLAYER_DIRS: Array[String] = ["down", "up", "left", "right"]
 const WEAPON_IDS: Array[String] = [
 	"pistol", "smg", "shotgun", "rifle", "laser", "rocket", "wand", "blade",
+	"gatling", "sniper", "crossbow", "grenade_launcher",
 ]
 const BOSS_IDS: Array[String] = ["warden", "weaver"]
 const TALENT_IDS: Array[String] = [
@@ -91,7 +92,7 @@ func run(t: Node) -> void:
 	_walk("res://assets", pngs, wavs)
 
 	# --- 1. 总量
-	t.eq(pngs.size(), 278, "PNG 总数 = 278（含根 icon.png）")
+	t.eq(pngs.size(), 286, "PNG 总数 = 286（含根 icon.png）")
 	t.eq(wavs.size(), 59, "WAV 总数 = 59（51 音效 + 8 BGM）")
 
 	# --- 2. 每个目录的文件数量

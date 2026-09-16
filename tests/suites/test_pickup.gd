@@ -92,6 +92,14 @@ func _find_offer_index(stock: Array, offer_id: String) -> int:
 	return -1
 
 
+func _count_offer(stock: Array, offer_id: String) -> int:
+	var n: int = 0
+	for entry: Variant in stock:
+		if entry is Dictionary and str((entry as Dictionary).get("id", "")) == offer_id:
+			n += 1
+	return n
+
+
 # ==================== 1. 七类拾取物效果 ====================
 
 func _test_pickup_effects(t: Node) -> void:
@@ -451,9 +459,10 @@ func _test_shop_offers(t: Node) -> void:
 		await _free_world(t, world)
 		return
 	var pad: ShopPad = world.shop_pad
-	t.eq(pad.stock.size(), ShopPad.OFFERS.size(), "默认货架铺满商品")
+	t.gte(float(pad.stock.size()), float(ShopPad.OFFERS.size() + 2), "默认货架铺满商品并追加武器")
 	t.gte(float(_find_offer_index(pad.stock, "talent")), 0.0, "货架上有天赋")
 	t.gte(float(_find_offer_index(pad.stock, "bomb")), 0.0, "货架上有炸弹")
+	t.gte(float(_find_offer_index(pad.stock, "weapon_specific")), 0.0, "货架上有可购买的武器")
 
 	# 买炸弹：可重复购买
 	GameState.gold = 300
@@ -475,6 +484,37 @@ func _test_shop_offers(t: Node) -> void:
 	t.eq(_find_offer_index(pad.stock, "talent"), -1, "一次性天赋买完即下架")
 	t.eq(int(world.room_data(shop_index).get("shop_stock", []).size()), pad.stock.size(),
 			"库存变化写回房间数据")
+
+	# 买武器：一次上架一把，付款后装进玩家武器栏并下架。
+	# 玩家出生带 3 把核心武器已满槽，买新武器走"替换当前武器"分支，
+	# 槽位数不变、但武器栏内含该武器；货架上 weapon_specific 数量减 1。
+	var weapon_offers_before: int = _count_offer(pad.stock, "weapon_specific")
+	GameState.gold = 9999
+	var weapon_offer_idx: int = _find_offer_index(pad.stock, "weapon_specific")
+	t.gte(float(weapon_offer_idx), 0.0, "购买前货架有武器")
+	if weapon_offer_idx >= 0:
+		var offer_weapon: WeaponData = pad.stock[weapon_offer_idx].get("weapon_data") as WeaponData
+		t.not_null(offer_weapon, "武器货架携带真实武器数据")
+		var weapon_price: int = int(pad.stock[weapon_offer_idx].get("price", 0))
+		pad.cursor = weapon_offer_idx
+		pad.interact(player)
+		t.eq(GameState.gold, 9999 - weapon_price, "武器按定价扣款")
+		t.eq(player.weapons.size(), 3, "武器栏槽位数不变（出生 3 把已满槽，买新武器替换）")
+		if offer_weapon != null:
+			t.check(player.weapons.has(offer_weapon), "买到的武器装进玩家武器栏")
+		t.eq(_count_offer(pad.stock, "weapon_specific"), weapon_offers_before - 1,
+				"买走的武器从货架下架")
+
+	# 反复进出商店不叠加：离开再回来，货架尺寸不变
+	var stock_count: int = pad.stock.size()
+	var other_index: int = _first_room_of_kind(world, G.RoomKind.START)
+	t.gte(float(other_index), 0.0, "布局里有起始房可用于往返测试")
+	if other_index >= 0:
+		world.goto_room(other_index)
+		await _frames(t, 4)
+		world.goto_room(shop_index)
+		await _frames(t, 4)
+		t.eq(world.shop_pad.stock.size(), stock_count, "反复进出商店不叠加武器货架")
 
 	await _free_world(t, world)
 

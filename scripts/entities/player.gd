@@ -243,6 +243,11 @@ func _handle_actions() -> void:
 			try_fire()
 	if Input.is_action_just_pressed("interact") and interact_cooldown <= 0.0:
 		try_interact()
+	if _focused_interactable != null and _focused_interactable.has_method("cycle_cursor"):
+		if Input.is_action_just_pressed("shop_prev"):
+			_focused_interactable.call("cycle_cursor", -1)
+		elif Input.is_action_just_pressed("shop_next"):
+			_focused_interactable.call("cycle_cursor", 1)
 	if Input.is_action_just_pressed("throw_bomb"):
 		try_throw_bomb()
 	_handle_weapon_switching()
@@ -424,8 +429,10 @@ func _fire_melee(weapon: WeaponData, damage: float, is_crit: bool) -> void:
 			weapon.melee_arc_deg * 0.5, damage, is_crit, weapon.knockback, get_instance_id(),
 			G.LAYER_ENEMY, [self])
 	last_shot_pellets = hits
-	Fx.play(_fx_host(), "slash", origin + aim_direction * 8.0, {
-		"fps": 30.0, "angle": aim_direction.angle(), "scale": 1.15, "z_index": 11,
+	# 特效尺寸与挥砍范围联动（基准：48 范围 @ scale 1.15，随 melee_range 同比放大）
+	var fx_scale: float = 1.15 * (weapon.melee_range / 48.0)
+	Fx.play(_fx_host(), "slash", origin + aim_direction * (weapon.melee_range * 0.16), {
+		"fps": 30.0, "angle": aim_direction.angle(), "scale": fx_scale, "z_index": 11,
 	})
 	if hits > 0:
 		EventBus.request_screen_shake.emit(weapon.shake, 0.1)

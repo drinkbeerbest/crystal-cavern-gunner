@@ -529,6 +529,88 @@ def make_blade() -> Spr:
     return s
 
 
+def make_gatling() -> Spr:
+    """晶能加特林：多管并列 + 旋转轴心 + 能量核心。"""
+    s = Spr(32, 16)
+    # 多根转管
+    for i, yy in enumerate((3, 5, 7, 9)):
+        s.rect(4, yy, 22, 2, PAL["metal_dk"])
+        s.hline(4, yy, 22, PAL["metal"])
+    # 枪口箍
+    s.rect(24, 2, 4, 12, PAL["gold_dk"])
+    s.rect(24, 2, 4, 1, PAL["gold"])
+    s.rect(4, 6, 8, 5, PAL["stone_2"])
+    s.rect(4, 6, 8, 1, PAL["stone_3"])
+    # 能量核心
+    s.px(17, 5, PAL["cry"]); s.px(18, 5, PAL["cry_lt"])
+    s.px(17, 9, PAL["cry_lt"]); s.px(18, 9, PAL["cry"])
+    # 握把与供弹箱
+    s.rect(5, 11, 5, 4, PAL["stone_1"])
+    s.rect(11, 11, 6, 3, PAL["metal_dk"])
+    s.rect(11, 11, 6, 1, PAL["metal"])
+    s.bevel(0.12, 0.2)
+    s.outline(PAL["outline"])
+    return s
+
+
+def make_sniper() -> Spr:
+    """深渊狙击枪：加长枪管 + 瞄具 + 深色护木。"""
+    s = Spr(36, 16)
+    _gun_body(s, 3, 6, 20, 4, PAL["stone_2"], PAL["shadow"], PAL["stone_3"])
+    s.rect(21, 5, 14, 3, PAL["metal_dk"])          # 加长枪管
+    s.rect(33, 5, 2, 3, PAL["metal"])              # 消焰口
+    s.rect(3, 3, 8, 4, PAL["gold_dk"])             # 高倍瞄具
+    s.rect(4, 4, 6, 1, PAL["gold"])
+    s.rect(8, 7, 3, 2, PAL["cry"])
+    s.px(10, 7, PAL["cry_glow"])
+    s.rect(4, 10, 5, 5, PAL["stone_1"])            # 握把
+    s.rect(14, 10, 4, 3, PAL["metal_dk"])          # 弹匣
+    s.px(24, 5, PAL["cry_lt"])
+    s.bevel(0.1, 0.2)
+    s.outline(PAL["outline"])
+    return s
+
+
+def make_crossbow() -> Spr:
+    """晶石穿心箭：弓臂 + 晶体箭体。"""
+    s = Spr(32, 16)
+    # 弓臂（上下两段）
+    s.rect(2, 2, 4, 12, PAL["gold_dk"])
+    s.rect(2, 2, 1, 12, PAL["gold"])
+    s.rect(22, 2, 4, 12, PAL["gold_dk"])
+    s.rect(25, 2, 1, 12, PAL["gold"])
+    # 弩身
+    _gun_body(s, 6, 7, 18, 3, PAL["stone_2"], PAL["shadow"], PAL["stone_3"])
+    # 晶体箭
+    s.poly([(0, 8), (6, 7), (6, 10), (0, 9)], PAL["cry_dk"])
+    s.poly([(21, 7), (22, 6), (26, 7), (26, 10), (22, 11), (21, 10)], PAL["cry_lt"])
+    s.px(23, 8, PAL["white"])
+    # 扳机与握把
+    s.rect(12, 10, 3, 4, PAL["stone_1"])
+    s.px(14, 8, PAL["cry"])
+    s.bevel(0.12, 0.2)
+    s.outline(PAL["outline"])
+    return s
+
+
+def make_grenade_launcher() -> Spr:
+    """崩裂爆弹枪：粗短弹管 + 储弹筒 + 爆炸色。"""
+    s = Spr(32, 16)
+    _gun_body(s, 3, 5, 18, 7, PAL["green_dk"], PAL["shadow"], PAL["green"])
+    s.rect(19, 4, 8, 9, PAL["metal_dk"])           # 粗弹管
+    s.rect(20, 5, 6, 7, PAL["metal"])
+    s.rect(24, 4, 3, 9, PAL["gold_dk"])            # 管口箍
+    s.rect(24, 4, 3, 1, PAL["gold"])
+    s.rect(5, 12, 7, 3, PAL["stone_2"])            # 储弹筒
+    s.rect(12, 12, 4, 3, PAL["metal_dk"])
+    s.px(11, 6, PAL["red_lt"])
+    s.px(13, 6, PAL["red_lt"])
+    s.rect(9, 2, 6, 3, PAL["stone_1"])             # 提把
+    s.bevel(0.12, 0.2)
+    s.outline(PAL["outline"])
+    return s
+
+
 WEAPONS = {
     "pistol": make_pistol,
     "smg": make_smg,
@@ -538,6 +620,10 @@ WEAPONS = {
     "rocket": make_rocket,
     "wand": make_wand,
     "blade": make_blade,
+    "gatling": make_gatling,
+    "sniper": make_sniper,
+    "crossbow": make_crossbow,
+    "grenade_launcher": make_grenade_launcher,
 }
 
 

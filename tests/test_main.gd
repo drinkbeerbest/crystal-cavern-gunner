@@ -17,6 +17,7 @@ const SUITE_PATHS: Array[String] = [
 	"res://tests/suites/test_dungeon_flow.gd",
 	"res://tests/suites/test_pickup.gd",
 	"res://tests/suites/test_boss.gd",
+	"res://tests/suites/test_bullet_tunneling.gd",
 ]
 
 ## 兜底看门狗：某个套件死循环时也要能退出并给出非零码，避免无头运行一直挂着

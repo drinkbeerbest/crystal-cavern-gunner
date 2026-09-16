@@ -139,11 +139,36 @@ func _scan(origin: Vector2, target: Vector2) -> Dictionary:
 	var space_state: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	if space_state == null:
 		return {}
-	var query := PhysicsRayQueryParameters2D.create(origin, target, _target_mask, [get_rid()])
-	query.collide_with_areas = true
-	query.collide_with_bodies = true
-	query.hit_from_inside = false
-	return space_state.intersect_ray(query)
+	var step: float = maxf(radius * 2.0, 8.0)
+	var delta_pos: Vector2 = target - origin
+	var dist: float = delta_pos.length()
+	if dist <= step:
+		var query := PhysicsRayQueryParameters2D.create(origin, target, _target_mask, [get_rid()])
+		query.collide_with_areas = true
+		query.collide_with_bodies = true
+		query.hit_from_inside = true
+		return space_state.intersect_ray(query)
+	var direction: Vector2 = delta_pos.normalized()
+	var steps: int = int(ceilf(dist / step))
+	var best_result: Dictionary = {}
+	var best_dist: float = 1e9
+	for i: int in range(steps):
+		var from: Vector2 = origin + direction * step * float(i)
+		var to: Vector2 = origin + direction * step * float(i + 1)
+		if i == steps - 1:
+			to = target
+		var query := PhysicsRayQueryParameters2D.create(from, to, _target_mask, [get_rid()])
+		query.collide_with_areas = true
+		query.collide_with_bodies = true
+		query.hit_from_inside = true
+		var result: Dictionary = space_state.intersect_ray(query)
+		if not result.is_empty():
+			var hit_pos: Vector2 = result.get("position", to)
+			var d: float = origin.distance_squared_to(hit_pos)
+			if d < best_dist:
+				best_dist = d
+				best_result = result
+	return best_result
 
 
 func _hit_target(target: Node, hit_position: Vector2) -> void:

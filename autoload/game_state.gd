@@ -44,6 +44,7 @@ var has_floor_key: bool = false
 
 # ---------- 元进度 / 设置 ----------
 var best_floor: int = 0
+var unlocked_floor: int = 1
 var total_runs: int = 0
 var settings: Dictionary = {
 	"master_volume": 0.85,
@@ -61,11 +62,11 @@ func _ready() -> void:
 
 # ==================== 一局游戏 ====================
 
-## 开新局。seed_value 传 0 表示随机。
-func new_run(seed_value: int = 0) -> void:
+## 开新局。seed_value 传 0 表示随机，start_floor 为选择的起始关卡（默认 1）。
+func new_run(seed_value: int = 0, start_floor: int = 1) -> void:
 	run_seed = seed_value if seed_value != 0 else int(Time.get_unix_time_from_system() * 1000.0) % 1000000007
 	rng.seed = run_seed
-	floor_index = 1
+	floor_index = clampi(start_floor, 1, G.TOTAL_FLOORS)
 	gold = G.START_GOLD
 	weapons.clear()
 	weapon_index = 0
@@ -153,6 +154,7 @@ func advance_floor() -> bool:
 		return false
 	floor_index += 1
 	best_floor = max(best_floor, floor_index)
+	unlocked_floor = max(unlocked_floor, floor_index)
 	# 每层的钥匙只开本层的 Boss 门，进新层重新找
 	has_floor_key = false
 	if not stats.is_empty():
@@ -403,12 +405,13 @@ func _load_meta_and_settings() -> void:
 			settings[k] = loaded_settings[k]
 	var meta: Dictionary = SaveMgr.load_meta()
 	best_floor = int(meta.get("best_floor", 0))
+	unlocked_floor = maxi(int(meta.get("unlocked_floor", 1)), 1)
 	total_runs = int(meta.get("total_runs", 0))
 	_apply_display_settings()
 
 
 func _save_meta() -> void:
-	SaveMgr.save_meta({"best_floor": best_floor, "total_runs": total_runs})
+	SaveMgr.save_meta({"best_floor": best_floor, "unlocked_floor": unlocked_floor, "total_runs": total_runs})
 
 
 ## 把当前局写入存档（换层/暂停时调用），供主菜单"继续"使用

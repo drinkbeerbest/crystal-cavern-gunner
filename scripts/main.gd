@@ -56,8 +56,8 @@ func goto_menu() -> void:
 	AudioMgr.play_bgm("menu")
 
 
-func start_new_run(seed_value: int = 0) -> void:
-	GameState.new_run(seed_value)
+func start_new_run(seed_value: int = 0, start_floor: int = 1) -> void:
+	GameState.new_run(seed_value, start_floor)
 	AudioMgr.play_sfx("ui_click")
 	_enter_game()
 
