@@ -105,6 +105,9 @@ func _ready() -> void:
 	set_deferred("monitoring", true)
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
+	# 武器掉落物改为手动交互拾取（按 E），不自动吸附/碰撞拾取
+	if kind == G.PickupKind.WEAPON:
+		add_to_group(CombatUtil.GROUP_INTERACTABLE)
 	EventBus.pickup_spawned.emit(self)
 
 
@@ -207,9 +210,11 @@ func _physics_process(delta: float) -> void:
 		_expire()
 		return
 	_apply_scatter(delta)
-	_apply_magnet(delta)
-	if _arm_timer <= 0.0:
-		_check_collect()
+	# 武器类拾取物不走自动吸附/碰撞，改由玩家手动交互（按 E 拾取）
+	if kind != G.PickupKind.WEAPON:
+		_apply_magnet(delta)
+		if _arm_timer <= 0.0:
+			_check_collect()
 
 
 ## 帧动画（单帧素材不动）
@@ -281,6 +286,9 @@ func _check_collect() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	# 武器类改为手动交互拾取（按 E），不走自动碰撞拾取
+	if kind == G.PickupKind.WEAPON:
+		return
 	if is_collected or is_expired or _arm_timer > 0.0:
 		return
 	if body == null or not is_instance_valid(body):
@@ -302,7 +310,53 @@ func can_collect() -> bool:
 			return target.energy() < target.max_energy() - 0.01
 		G.PickupKind.SHIELD_CELL:
 			return target.shield() < target.max_shield() - 0.01
+		G.PickupKind.WEAPON:
+			# 武器类：走交互拾取，can_collect 控制是否还能交互
+			return not is_collected and not is_expired
 	return true
+
+
+## 武器掉落物：交互契约（与 ShopPad / Altar 一致）
+func can_interact(_player: Node2D) -> bool:
+	return kind == G.PickupKind.WEAPON and not is_collected and not is_expired
+
+
+func interact_prompt() -> String:
+	var item: WeaponData = weapon if weapon != null else WEAPON_DB.starter()
+	return "按 E 拾取：%s" % (item.display_name if item != null else "武器")
+
+
+func interact(_player: Node2D) -> void:
+	if is_collected or is_expired or kind != G.PickupKind.WEAPON:
+		return
+	var target: Player = _player()
+	if target == null or target.dead:
+		return
+	# 武器结算：满槽时走交换（当前武器掉下），不满时直接装备
+	var item: WeaponData = weapon if weapon != null else WEAPON_DB.starter()
+	var swapped: bool = false
+	if item != null:
+		swapped = target.weapons.size() >= G.MAX_WEAPON_SLOTS
+		target.add_weapon(item)
+	result = {
+		"kind": kind, "amount": 1.0,
+		"text": ("交换 %s" if swapped else "获得 %s") % (item.display_name if item != null else "武器"),
+		"color": COLOR_WEAPON, "weapon_name": str(item.display_name if item != null else ""),
+		"sfx": "pickup_weapon", "fx": "level_ring", "fx_scale": 0.7,
+	}
+	is_collected = true
+	set_deferred("monitoring", false)
+	visible = false
+	if result.has("sfx") and str(result["sfx"]) != "":
+		AudioMgr.play_sfx(str(result["sfx"]), 0.0, -7.0)
+	var fx_name: String = str(result.get("fx", ""))
+	if fx_name != "":
+		Fx.play(_fx_host(), fx_name, global_position + Vector2(0, -4), {
+			"fps": 18.0, "scale": float(result.get("fx_scale", 0.8)), "z_index": 13,
+		})
+	collected.emit(self, result)
+	EventBus.pickup_collected.emit(kind_name(kind), float(result.get("amount", amount)))
+	queue_free()
 
 
 ## 拾取结算。返回 result（同时写进 self.result），不满足条件时返回空字典。
@@ -365,11 +419,16 @@ func _settle(target: Player) -> Dictionary:
 			}
 		G.PickupKind.WEAPON:
 			var item: WeaponData = weapon if weapon != null else WEAPON_DB.starter()
+			var swapped: bool = false
 			if item != null:
+				swapped = target.weapons.size() >= G.MAX_WEAPON_SLOTS
 				target.add_weapon(item)
+			var text: String = "获得 %s" % (item.display_name if item != null else "武器")
+			if swapped:
+				text = "交换 %s" % (item.display_name if item != null else "武器")
 			return {
 				"kind": kind, "amount": 1.0,
-				"text": "获得 %s" % (item.display_name if item != null else "武器"),
+				"text": text,
 				"color": COLOR_WEAPON, "weapon_name": str(item.display_name if item != null else ""),
 				"sfx": "pickup_weapon", "fx": "level_ring", "fx_scale": 0.7,
 			}

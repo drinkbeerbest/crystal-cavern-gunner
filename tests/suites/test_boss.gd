@@ -102,7 +102,7 @@ func _test_boss_table(t: Node) -> void:
 			"Boss 与普通敌人脚本不同")
 
 	# 数值表齐全：相位/移速/弹幕/召唤/砸地/阶段 2
-	t.gt(warden.max_health, 500.0, "warden 生命 1150")
+	t.gt(warden.max_health, 500.0, "warden 生命 862")
 	t.gt(warden.armor, 0.0, "warden 有护甲")
 	t.gt(warden.phase_threshold, 0.0, "warden 有阶段阈值")
 	t.gt(warden.radial_count, 0, "warden 有环形弹幕")
@@ -134,7 +134,7 @@ func _test_boss_table(t: Node) -> void:
 
 	# 层数成长：第 3 层双 Boss 血量健康
 	var late: EnemyData = EnemyDB.create_data("warden", 3)
-	t.near(late.max_health, 1150.0 * (1.0 + G.ENEMY_HP_GROWTH_PER_FLOOR * 2.0), 1.0,
+	t.near(late.max_health, 862.0 * (1.0 + G.ENEMY_HP_GROWTH_PER_FLOOR * 2.0), 1.0,
 			"第 3 层 warden 血量按成长公式放大")
 	t.check(late.max_health > warden.max_health, "层数越高 Boss 越肉")
 
@@ -217,12 +217,12 @@ func _test_hit_phase_and_interrupt(t: Node) -> void:
 	boss.skill_timer = 0.01
 	await _wait_until(t, func() -> bool: return boss.skill_context == EnemyBoss.Skill.NONE, 300)
 
-	# 跨阈值转阶段 2：weaver 血 1050、阈值 0.5
+	# 跨阈值转阶段 2：weaver 血 788、阈值 0.5
 	var hp_before: float = boss.health
-	t.check(hp_before > 525.0, "起始血量高于阈值")
-	boss.take_hit(hp_before - 500.0, false, Vector2.ZERO, 4242)
+	t.check(hp_before > 394.0, "起始血量高于阈值")
+	boss.take_hit(hp_before - 350.0, false, Vector2.ZERO, 4242)
 	t.check(boss.health <= boss.max_health * boss.data.phase_threshold,
-			"血量压到阈值以下（500 < 525）")
+			"血量压到阈值以下（350 < 394）")
 	t.eq(boss.phase_index, 2, "切换到阶段 2")
 	t.eq(boss.phase_switches, 1, "阶段切换计数 1")
 	t.eq(phase_events.size(), 1, "boss_phase_changed 触发一次")

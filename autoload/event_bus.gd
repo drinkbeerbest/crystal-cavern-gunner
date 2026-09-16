@@ -23,6 +23,7 @@ signal weapon_equipped(weapon_data: Resource, slot_index: int)
 signal weapon_list_changed(weapons: Array)
 signal weapon_fired(weapon_data: Resource, is_crit: bool)
 signal weapon_switched(slot_index: int)
+signal weapon_dropped(weapon_data: Resource, at_position: Vector2)
 signal ammo_or_energy_lacking
 
 # ---------- 敌人 / 战斗 ----------

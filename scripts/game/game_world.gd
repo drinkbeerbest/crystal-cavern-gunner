@@ -266,6 +266,15 @@ func _connect_events() -> void:
 		EventBus.enemy_died.connect(_on_enemy_died)
 	if not EventBus.enemy_dropped.is_connected(_on_enemy_dropped):
 		EventBus.enemy_dropped.connect(_on_enemy_dropped)
+	if not EventBus.weapon_dropped.is_connected(_on_weapon_dropped):
+		EventBus.weapon_dropped.connect(_on_weapon_dropped)
+
+
+func _on_weapon_dropped(weapon: WeaponData, at_position: Vector2) -> void:
+	if weapon == null:
+		return
+	var drop: Pickup = spawn_pickup(G.PickupKind.WEAPON, 1.0, at_position)
+	drop.weapon = weapon
 
 
 func _intro_toast() -> void:

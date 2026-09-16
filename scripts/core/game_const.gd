@@ -47,12 +47,12 @@ const DEFAULT_PLAYER_STATS: Dictionary = {
 	"shield_regen_rate": 9.0,       # 每秒回复护盾
 	"max_energy": 100.0,
 	"energy": 100.0,
-	"energy_regen": 6.0,            # 每秒回复能量（低于三把主武器的耗能速率，能量才是真资源）
+	"energy_regen": 7.0,            # 每秒回复能量（低于三把主武器的耗能速率，能量才是真资源）
 	"move_speed": 205.0,            # 像素/秒
 	"dash_speed": 640.0,
 	"dash_duration": 0.16,
 	"dash_cooldown": 0.85,
-	"skill_cooldown": 6.0,
+	"skill_cooldown": 4.8,
 	"crit_chance": 0.10,
 	"crit_multiplier": 1.8,
 	"damage_multiplier": 1.0,
@@ -82,10 +82,10 @@ const PLAYER_BODY_RADIUS: float = 6.0
 
 # ---------- 技能：晶能冲击波 ----------
 const SKILL_ID: String = "shockwave"
-const SKILL_ENERGY_COST: float = 25.0
-const SKILL_DAMAGE: float = 34.0
-const SKILL_RADIUS: float = 92.0
-const SKILL_KNOCKBACK: float = 320.0
+const SKILL_ENERGY_COST: float = 20.0
+const SKILL_DAMAGE: float = 44.0
+const SKILL_RADIUS: float = 115.0
+const SKILL_KNOCKBACK: float = 380.0
 
 # ---------- 爆炸 ----------
 ## 火箭等爆炸弹的直接命中伤害占比（范围伤害另按距离衰减）
@@ -177,9 +177,9 @@ const BOMB_THROW_RANGE: float = 138.0
 ## 落地后的引信时长（秒）
 const BOMB_FUSE: float = 1.0
 ## 爆炸半径 / 伤害 / 击退
-const BOMB_RADIUS: float = 78.0
-const BOMB_DAMAGE: float = 58.0
-const BOMB_KNOCKBACK: float = 340.0
+const BOMB_RADIUS: float = 98.0
+const BOMB_DAMAGE: float = 75.0
+const BOMB_KNOCKBACK: float = 390.0
 ## 两次投掷的最小间隔
 const BOMB_COOLDOWN: float = 0.34
 ## 玩家自伤比例（避免贴脸炸自己秒杀）

@@ -23,5 +23,5 @@ if not exist "%GAME_DIR%\project.godot" (
     exit /b 1
 )
 
-start "" "%GODOT%" --path "%GAME_DIR%"
+start "" "%GODOT%" --path "%GAME_DIR%" --release
 endlocal

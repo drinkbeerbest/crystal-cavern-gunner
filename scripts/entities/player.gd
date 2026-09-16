@@ -774,7 +774,9 @@ func add_weapon(weapon: WeaponData) -> bool:
 	if weapon == null:
 		return false
 	if weapons.size() >= G.MAX_WEAPON_SLOTS:
+		var old: WeaponData = weapons[weapon_index]
 		weapons[weapon_index] = weapon
+		EventBus.weapon_dropped.emit(old, global_position)
 	else:
 		weapons.append(weapon)
 		weapon_index = weapons.size() - 1

@@ -69,7 +69,7 @@ const TABLE: Dictionary = {
 	},
 	"warden": {
 		"display_name": "晶核监守者", "archetype": A.BOSS, "tier": T.NORMAL,
-		"max_health": 1150.0, "armor": 3.0, "move_speed": 82.0, "body_radius": 17.0,
+		"max_health": 862.0, "armor": 3.0, "move_speed": 82.0, "body_radius": 17.0,
 		"knockback_resist": 0.9, "sight_range": 460.0, "score": 300,
 		"contact_damage": 14.0, "contact_cooldown": 0.55,
 		# ---------- 冲撞 ----------
@@ -104,7 +104,7 @@ const TABLE: Dictionary = {
 	},
 	"weaver": {
 		"display_name": "织弹者", "archetype": A.BOSS, "tier": T.NORMAL,
-		"max_health": 1050.0, "armor": 2.0, "move_speed": 96.0, "body_radius": 16.0,
+		"max_health": 788.0, "armor": 2.0, "move_speed": 96.0, "body_radius": 16.0,
 		"knockback_resist": 0.9, "sight_range": 480.0, "score": 320,
 		"contact_damage": 12.0, "contact_cooldown": 0.6,
 		# ---------- 扇形弹幕 ----------
