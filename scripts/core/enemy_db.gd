@@ -53,7 +53,7 @@ const TABLE: Dictionary = {
 		"sfx_shoot": "shoot_wand",
 		"description": "悬浮的晶眼集合体，保持距离吐射晶弹。",
 	},
-	"bloom": {
+"bloom": {
 		"display_name": "孢晶囊", "archetype": A.BOMBER, "tier": T.NORMAL,
 		"max_health": 22.0, "armor": 0.0, "move_speed": 104.0, "body_radius": 8.0,
 		"knockback_resist": 0.0, "sight_range": 300.0, "score": 14,
@@ -66,6 +66,20 @@ const TABLE: Dictionary = {
 		"sprite_base": "bloom", "frame_count": 4, "anim_fps": 11.0,
 		"sfx_fuse": "boss_charge",
 		"description": "鼓胀的孢子晶囊，靠近后急速膨胀炸开。",
+	},
+	"reaver_hound": {
+		"display_name": "掠晶猎犬", "archetype": A.MELEE, "tier": T.NORMAL,
+		"max_health": 28.0, "armor": 0.0, "move_speed": 128.0, "body_radius": 7.0,
+		"knockback_resist": 0.15, "sight_range": 340.0, "score": 12,
+		"contact_damage": 6.0, "contact_cooldown": 0.65,
+		"charge_trigger_range": 150.0, "charge_windup": 0.22, "charge_speed": 385.0,
+		"charge_duration": 0.36, "charge_damage": 13.0, "charge_knockback": 220.0,
+		"charge_cooldown": 1.35, "charge_stun_on_wall": 0.3,
+		"gold_min": 2, "gold_max": 5,
+		"drops": {"energy": 0.32, "health": 0.10, "shield_cell": 0.05, "bomb": 0.05, "weapon": 0.02, "talent": 0.02},
+		"sprite_base": "reaver_hound", "frame_count": 3, "anim_fps": 13.0,
+		"sfx_attack": "boss_charge",
+		"description": "被晶噬感染的猎犬，比矿道行者更快更凶，短距连扑咬碎猎物。",
 	},
 	"warden": {
 		"display_name": "晶核监守者", "archetype": A.BOSS, "tier": T.NORMAL,
@@ -134,8 +148,43 @@ const TABLE: Dictionary = {
 		"sprite_base": "weaver", "sprite_dir": "res://assets/sprites/bosses/",
 		"frame_count": 4, "anim_fps": 8.0,
 		"boss_sprite_scale": 1.0,
-		"sfx_attack": "boss_slam", "sfx_shoot": "boss_roar", "sfx_die": "boss_die", "sfx_hurt": "enemy_hurt",
+"sfx_attack": "boss_slam", "sfx_shoot": "boss_roar", "sfx_die": "boss_die", "sfx_hurt": "enemy_hurt",
 		"description": "用晶丝编织弹幕的织者：扇形连喷与螺旋光弹编织成网，狂暴后更难闪避。",
+	},
+	"reaper": {
+		"display_name": "晶脉收割者", "archetype": A.BOSS, "tier": T.NORMAL,
+		"max_health": 1015.0, "armor": 4.0, "move_speed": 88.0, "body_radius": 18.0,
+		"knockback_resist": 0.95, "sight_range": 500.0, "score": 380,
+		"contact_damage": 16.0, "contact_cooldown": 0.5,
+		# ---------- 冲撞（重镰突进） ----------
+		"charge_trigger_range": 250.0, "charge_windup": 0.45, "charge_speed": 360.0,
+		"charge_duration": 0.5, "charge_damage": 28.0, "charge_knockback": 320.0,
+		"charge_cooldown": 5.8, "charge_stun_on_wall": 0.6,
+		# ---------- 环形弹幕（晶镰挥出的死亡之环） ----------
+		"radial_count": 16, "radial_waves": 2, "radial_wave_interval": 0.26,
+		"radial_damage": 13.0, "radial_speed": 205.0, "radial_cooldown": 4.6,
+		"radial_telegraph": 0.5,
+		# ---------- 召唤（掠晶猎犬群） ----------
+		"summon_ids": ["reaver_hound"], "summon_count": 4, "summon_cap": 8,
+		"summon_cooldown": 9.0, "summon_windup": 0.75,
+		# ---------- 砸地（挥镰震地） ----------
+		"slam_radius": 105.0, "slam_damage": 28.0, "slam_knockback": 300.0,
+		"slam_windup": 0.5, "slam_cooldown": 5.0, "slam_trigger_range": 130.0,
+		# ---------- 阶段 ----------
+		"phase_threshold": 0.5, "skill_interval": 1.2, "strafe_speed": 48.0,
+		"phase2_speed_mul": 1.14, "phase2_cooldown_mul": 0.74, "phase2_extra_bullets": 5,
+		# ---------- 强化弹幕（阶段 2 解锁扇形） ----------
+		"fan_count": 8, "fan_spread_deg": 50.0, "fan_bursts": 3, "fan_burst_interval": 0.15,
+		"fan_damage": 12.0, "fan_speed": 255.0, "fan_cooldown": 3.8, "fan_aim_time": 0.4,
+		"spiral_arms": 2, "spiral_step_deg": 14.0, "spiral_ticks": 10, "spiral_interval": 0.12,
+		"spiral_damage": 9.0, "spiral_speed": 175.0, "spiral_cooldown": 6.5,
+		"gold_min": 80, "gold_max": 140,
+		"drops": {"energy": 0.95, "health": 0.55, "shield_cell": 0.45, "bomb": 0.3, "weapon": 0.45, "talent": 0.4},
+		"sprite_base": "reaper", "sprite_dir": "res://assets/sprites/bosses/",
+		"frame_count": 4, "anim_fps": 7.0,
+		"boss_sprite_scale": 1.0,
+		"sfx_attack": "boss_slam", "sfx_shoot": "boss_roar", "sfx_die": "boss_die", "sfx_hurt": "enemy_hurt",
+		"description": "深渊最底层的收割者：镰刃挥出死亡之环、震地碎晶，并呼唤成群掠晶猎犬碾碎闯入者。",
 	},
 }
 
@@ -155,11 +204,18 @@ const ELITE_OVERRIDES: Dictionary = {
 		"score": 30, "gold_min": 7, "gold_max": 14,
 		"drops": {"energy": 0.55, "health": 0.3, "shield_cell": 0.2, "weapon": 0.12, "talent": 0.1},
 	},
-	"bloom": {
+"bloom": {
 		"max_health": 44.0, "move_speed": 112.0, "armor": 0.0, "knockback_resist": 0.15,
 		"explosion_radius": 78.0, "explosion_damage": 44.0, "fuse_time": 0.62,
 		"fuse_trigger_range": 56.0, "score": 32, "gold_min": 6, "gold_max": 13,
 		"drops": {"energy": 0.55, "health": 0.3, "bomb": 0.22, "shield_cell": 0.14, "weapon": 0.1, "talent": 0.08},
+	},
+	"reaver_hound": {
+		"max_health": 56.0, "move_speed": 142.0, "armor": 1.0, "knockback_resist": 0.35,
+		"contact_damage": 9.0, "charge_damage": 19.0, "charge_windup": 0.2,
+		"charge_cooldown": 1.15, "charge_speed": 420.0, "score": 28,
+		"gold_min": 6, "gold_max": 12,
+		"drops": {"energy": 0.5, "health": 0.28, "shield_cell": 0.16, "bomb": 0.12, "weapon": 0.1, "talent": 0.08},
 	},
 }
 
@@ -257,8 +313,8 @@ static func wave_count(rng: RandomNumberGenerator, floor_index: int, room_kind: 
 
 ## 按层数权重摇一个敌人 id（含精英判定）
 static func roll_enemy_id(rng: RandomNumberGenerator, floor_index: int) -> String:
-	var level: int = clampi(floor_index, 1, 3)
-	var weights: Dictionary = G.WAVE_TYPE_WEIGHTS.get(level, G.WAVE_TYPE_WEIGHTS[3])
+	var level: int = clampi(floor_index, 1, G.TOTAL_FLOORS)
+	var weights: Dictionary = G.WAVE_TYPE_WEIGHTS.get(level, G.WAVE_TYPE_WEIGHTS[G.TOTAL_FLOORS])
 	var picked: Variant = G.weighted_pick(weights, rng)
 	if picked == null:
 		picked = "husk"

@@ -22,8 +22,8 @@ const ALPHA_FORMATS: Array[int] = [
 
 const EXPECT_COUNTS: Dictionary = {
 	"sprites/player": 16,
-	"sprites/enemies": 34,
-	"sprites/bosses": 8,
+	"sprites/enemies": 40,
+	"sprites/bosses": 12,
 	"tiles": 21,
 	"props": 30,
 	"fx": 62,
@@ -32,7 +32,7 @@ const EXPECT_COUNTS: Dictionary = {
 	"ui/weapons": 12,
 	"weapons": 12,
 	"audio/sfx": 51,
-	"audio/bgm": 8,
+	"audio/bgm": 9,
 }
 
 const PLAYER_DIRS: Array[String] = ["down", "up", "left", "right"]
@@ -40,7 +40,7 @@ const WEAPON_IDS: Array[String] = [
 	"pistol", "smg", "shotgun", "rifle", "laser", "rocket", "wand", "blade",
 	"gatling", "sniper", "crossbow", "grenade_launcher",
 ]
-const BOSS_IDS: Array[String] = ["warden", "weaver"]
+const BOSS_IDS: Array[String] = ["warden", "weaver", "reaper"]
 const TALENT_IDS: Array[String] = [
 	"crit", "damage", "energy", "life", "shield", "speed",
 ]
@@ -74,7 +74,7 @@ const KEY_SFX: Array[String] = [
 	"boss_roar", "boss_charge", "boss_slam", "boss_summon", "boss_die",
 	"level_clear", "game_over", "level_start",
 ]
-const LOOP_BGM: Array[String] = ["menu", "dungeon_1", "dungeon_2", "dungeon_3", "boss", "shop"]
+const LOOP_BGM: Array[String] = ["menu", "dungeon_1", "dungeon_2", "dungeon_3", "dungeon_4", "boss", "shop"]
 const ONESHOT_BGM: Array[String] = ["victory", "gameover"]
 # UI 里实际会用到的中文字符（必须都在字体子集内）
 const CJK_SAMPLE: String = "晶窟枪魂开始游戏继续设置退出暂停恢复重开主菜单音量全屏按键生命护盾能量金币层数房间商店宝箱祭坛传送门天赋暴击伤害速度拾取购买出售锁定已通关失败胜利得分当前武器技能冲刺交互确定取消返回提示难度普通困难噩梦加载中请稍候"
@@ -92,8 +92,8 @@ func run(t: Node) -> void:
 	_walk("res://assets", pngs, wavs)
 
 	# --- 1. 总量
-	t.eq(pngs.size(), 286, "PNG 总数 = 286（含根 icon.png）")
-	t.eq(wavs.size(), 59, "WAV 总数 = 59（51 音效 + 8 BGM）")
+	t.eq(pngs.size(), 296, "PNG 总数 = 296（含根 icon.png）")
+	t.eq(wavs.size(), 60, "WAV 总数 = 60（51 音效 + 9 BGM）")
 
 	# --- 2. 每个目录的文件数量
 	var per_dir: Dictionary = {}
@@ -112,7 +112,7 @@ func run(t: Node) -> void:
 		elif p.contains("/bgm/"):
 			bgm_n += 1
 	t.eq(sfx_n, EXPECT_COUNTS["audio/sfx"], "音效数量 = 51")
-	t.eq(bgm_n, EXPECT_COUNTS["audio/bgm"], "BGM 数量 = 8")
+	t.eq(bgm_n, EXPECT_COUNTS["audio/bgm"], "BGM 数量 = 9")
 
 	# --- 3. 图片：类型 / Alpha / 尺寸
 	var no_alpha: Array[String] = []
@@ -140,6 +140,8 @@ func run(t: Node) -> void:
 	_check_size(t, "res://assets/sprites/player/down_0.png", 22, 26, "玩家精灵 22x26")
 	_check_size(t, "res://assets/sprites/bosses/warden_0.png", 56, 58, "Boss warden 56x58")
 	_check_size(t, "res://assets/sprites/bosses/weaver_0.png", 64, 60, "Boss weaver 64x60")
+	_check_size(t, "res://assets/sprites/bosses/reaper_0.png", 64, 60, "Boss reaper 64x60")
+	_check_size(t, "res://assets/sprites/enemies/reaver_hound_0.png", 28, 26, "小怪 reaver_hound 28x26")
 	_check_size(t, "res://assets/tiles/floor_a_0.png", 32, 32, "地砖 32x32")
 	_check_size(t, "res://assets/fx/explode_0.png", 48, 48, "爆炸帧 48x48")
 	_check_size(t, "res://assets/icon.png", 128, 128, "工程图标 128x128")
@@ -209,7 +211,7 @@ func run(t: Node) -> void:
 		var s2: AudioStreamWAV = load("res://assets/audio/bgm/%s.wav" % name)
 		if s2 == null or s2.loop_mode != AudioStreamWAV.LOOP_DISABLED:
 			loop_bad.append(name + "(应为不循环)")
-	t.check(loop_bad.is_empty(), "BGM 循环设置正确：6 首循环 / 2 首结算不循环（异常 %s）" % str(loop_bad))
+	t.check(loop_bad.is_empty(), "BGM 循环设置正确：7 首循环 / 2 首结算不循环（异常 %s）" % str(loop_bad))
 	var boss_bgm: AudioStreamWAV = load("res://assets/audio/bgm/boss.wav")
 	t.gt(boss_bgm.get_length(), 10.0, "Boss BGM 时长 > 10 秒（实际 %.1f 秒）" % boss_bgm.get_length())
 

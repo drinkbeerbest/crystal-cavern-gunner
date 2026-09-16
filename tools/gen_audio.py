@@ -1104,12 +1104,15 @@ def note_midi_freq(midi: int) -> float:
 
 
 def bgm_dungeon(layer: int) -> np.ndarray:
-    layer = max(1, min(3, layer))
+    layer = max(1, min(4, layer))
     if layer == 1:
         return _dungeon_track(bpm=104, bars=16, key_root="A", seed=101, intensity=0.3)
     if layer == 2:
         return _dungeon_track(bpm=118, bars=16, key_root="D", seed=202, intensity=0.6)
-    return _dungeon_track(bpm=132, bars=16, key_root="E", seed=303, intensity=0.9)
+    if layer == 3:
+        return _dungeon_track(bpm=132, bars=16, key_root="E", seed=303, intensity=0.9)
+    # 第 4 层（深渊层）：更快更密，和声进行更深沉
+    return _dungeon_track(bpm=144, bars=16, key_root="G", seed=404, intensity=1.05)
 
 
 def bgm_boss() -> np.ndarray:
@@ -1256,6 +1259,7 @@ BGM = {
     "dungeon_1": (lambda: bgm_dungeon(1), True),
     "dungeon_2": (lambda: bgm_dungeon(2), True),
     "dungeon_3": (lambda: bgm_dungeon(3), True),
+    "dungeon_4": (lambda: bgm_dungeon(4), True),
     "boss": (bgm_boss, True),
     "shop": (bgm_shop, True),
     "victory": (bgm_victory, False),

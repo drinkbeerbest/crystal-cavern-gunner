@@ -114,6 +114,28 @@ func _test_boss_table(t: Node) -> void:
 	t.gt(weaver.spiral_arms, 0, "weaver 有螺旋弹幕")
 	t.eq(weaver.charge_windup, 0.45, "weaver 也带冲撞参数（防御性兜底）")
 
+	# 第 4 层 Boss：晶脉收割者
+	var reaper: EnemyData = EnemyDB.create_data("reaper")
+	t.not_null(reaper, "EnemyDB 能创建 reaper（晶脉收割者）")
+	if reaper == null:
+		return
+	t.eq(reaper.archetype, EnemyData.Archetype.BOSS, "reaper 为 BOSS 原型")
+	t.eq(EnemyDB.script_for(reaper), EnemyDB.BOSS_SCRIPT, "reaper 共用 BOSS 脚本")
+	t.gt(reaper.max_health, 1000.0, "reaper 生命 1015（全场最肉）")
+	t.gt(reaper.armor, warden.armor, "reaper 护甲比 warden 高")
+	t.gt(reaper.phase_threshold, 0.0, "reaper 有阶段阈值")
+	t.gt(reaper.radial_count, 0, "reaper 有环形弹幕（死亡之环）")
+	t.gt(reaper.charge_damage, 0.0, "reaper 有冲撞伤害（突进斩）")
+	t.gt(reaper.summon_count, 0, "reaper 有召唤")
+	t.check(reaper.summon_ids.has("reaver_hound"), "reaper 召唤掠晶猎犬")
+	t.gt(reaper.slam_damage, 0.0, "reaper 有砸地（震地碎晶）")
+	t.gt(reaper.fan_count, 0, "reaper 阶段 2 解锁扇形弹幕")
+	t.gt(reaper.spiral_arms, 0, "reaper 有螺旋弹幕")
+	t.check(reaper.phase2_speed_mul > 1.0 and reaper.phase2_cooldown_mul < 1.0,
+			"reaper 阶段 2 同样强化")
+	t.eq(reaper.sprite_dir, "res://assets/sprites/bosses/", "reaper 使用独立贴图目录")
+	t.check(ResourceLoader.exists(reaper.sprite_path(0)), "reaper 贴图存在")
+
 	# 阶段 2 强化数值合法
 	t.check(warden.phase2_speed_mul > 1.0, "阶段 2 移速加成")
 	t.check(warden.phase2_cooldown_mul < 1.0, "阶段 2 冷却缩短")
@@ -121,7 +143,7 @@ func _test_boss_table(t: Node) -> void:
 			"weaver 阶段 2 同样强化")
 
 	# 贴图：4 帧齐全且真实存在
-	for boss_data: EnemyData in [warden, weaver]:
+	for boss_data: EnemyData in [warden, weaver, reaper]:
 		t.check(ResourceLoader.exists(boss_data.sprite_path(0)), "Boss 贴图存在：%s" % boss_data.sprite_path(0))
 		t.eq(boss_data.frames().size(), boss_data.frame_count, "%s 帧数与配置一致" % boss_data.id)
 	t.eq(warden.sprite_dir, "res://assets/sprites/bosses/", "warden 使用独立贴图目录")
@@ -138,8 +160,8 @@ func _test_boss_table(t: Node) -> void:
 			"第 3 层 warden 血量按成长公式放大")
 	t.check(late.max_health > warden.max_health, "层数越高 Boss 越肉")
 
-	# 存活 id 数量回归：测试里已有敌人 id 数应为 8（3 基础 + 3 精英 + 2 Boss）
-	t.eq(EnemyDB.ids().size(), 8, "敌人 id 总数 = 8（3 基础 + 3 精英 + 2 Boss）")
+	# 存活 id 数量回归：测试里已有敌人 id 数应为 11（4 基础 + 4 精英 + 3 Boss）
+	t.eq(EnemyDB.ids().size(), 11, "敌人 id 总数 = 11（4 基础 + 4 精英 + 3 Boss）")
 
 
 # ==================== 2. 生成装配 ====================

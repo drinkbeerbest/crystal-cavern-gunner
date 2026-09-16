@@ -12,6 +12,7 @@ const MENU_SCRIPT_PATH: String = "res://scripts/ui/main_menu.gd"
 const GAME_SCRIPT_PATH: String = "res://scripts/game/game_world.gd"
 const FALLBACK_SCREEN_PATH: String = "res://scripts/ui/boot_screen.gd"
 const RESULT_SCREEN_PATH: String = "res://scripts/ui/result_screen.gd"
+const G := preload("res://scripts/core/game_const.gd")
 
 var current_screen: Node = null
 var last_run_result: Dictionary = {}
@@ -94,7 +95,7 @@ func _enter_game() -> void:
 		# 真机默认走随机地牢；测试/调试可把 debug_force_arena 置 true 回到试验场
 		(screen as GameWorld).dungeon_mode = not debug_force_arena
 	_swap_screen(screen)
-	AudioMgr.play_bgm("dungeon_%d" % clamp(GameState.floor_index, 1, 3))
+	AudioMgr.play_bgm("dungeon_%d" % clamp(GameState.floor_index, 1, G.TOTAL_FLOORS))
 
 
 func _swap_screen(screen: Node) -> void:

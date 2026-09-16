@@ -15,7 +15,7 @@ const G := preload("res://scripts/core/game_const.gd")
 
 ## 每层跑多少个种子（不变量校验的样本量）
 const SEEDS_PER_FLOOR: int = 120
-const FLOORS: Array[int] = [1, 2, 3]
+const FLOORS: Array[int] = [1, 2, 3, 4]
 ## 门洞对称性单独抽样（开销更大，样本少一些）
 const SYMMETRY_SEEDS: int = 40
 
@@ -188,7 +188,7 @@ func _test_door_symmetry(t: Node) -> void:
 	for i: int in range(SYMMETRY_SEEDS):
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 424242 + i * 13
-		var layout: DungeonLayout = DungeonLayout.generate(rng, (i % 3) + 1)
+		var layout: DungeonLayout = DungeonLayout.generate(rng, (i % G.TOTAL_FLOORS) + 1)
 		checked += 1
 		for index: int in range(layout.room_count()):
 			for dir: int in layout.door_dirs(index):
@@ -298,7 +298,7 @@ func _test_wave_planning(t: Node) -> void:
 	var boss_wave_leak: Array[String] = []
 	var created: Array[Node] = []
 	for i: int in range(12):
-		var floor_index: int = (i % 3) + 1
+		var floor_index: int = (i % G.TOTAL_FLOORS) + 1
 		var layout: DungeonLayout = DungeonLayout.generate(_rng(555 + i * 101), floor_index)
 		for entry: Dictionary in layout.rooms:
 			var kind: int = int(entry["kind"])

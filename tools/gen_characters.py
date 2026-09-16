@@ -345,6 +345,65 @@ def make_bloom(frame: int, elite: bool = False, charge: int = 0) -> Spr:
     return s
 
 
+# ------------------------------------------------------------------ 敌人：掠晶猎犬（快速近战）
+# 俯视低伏猎犬：四足奔跑、背脊晶刺、血红眼睛；基础绯红，精英金色。
+
+REAVER_W, REAVER_H = 28, 26
+
+
+def make_reaver_hound(frame: int, elite: bool = False) -> Spr:
+    s = Spr(REAVER_W, REAVER_H)
+    body = PAL["reaver"] if not elite else PAL["gold"]
+    body_dk = PAL["reaver_dk"] if not elite else PAL["gold_dk"]
+    body_lt = PAL["reaver_lt"] if not elite else PAL["gold_lt"]
+    eye = PAL["cry_glow"] if not elite else PAL["red_lt"]
+    blade = PAL["cry"] if not elite else PAL["red"]
+    blade_lt = PAL["cry_lt"] if not elite else PAL["red_lt"]
+    rng = np.random.default_rng(71 + frame)
+
+    # 影子
+    sh = Spr(REAVER_W, REAVER_H)
+    sh.ell(14, 24, 9, 2, (6, 6, 12, 110))
+    s.paste(sh, 0, 0)
+
+    # 四足（快速奔跑，前后交替）
+    gait = [0, 1, 0, -1][frame % 4]
+    for i, fx in enumerate((4, 7, 20, 23)):
+        off = gait if i % 2 == 0 else -gait
+        s.rect(fx, 19 - (off if i < 2 else 0), 2, 5 if i < 2 else 4, body_dk)
+        s.px(fx, 23, PAL["outline"])
+        s.px(fx + 1, 23, PAL["outline"])
+
+    # 低伏身体（长条猎犬）
+    s.ell(14, 16, 11, 6.5, body)
+    s.ell(14, 14, 9, 4.5, body_lt)
+    s.ell(14, 18, 8.5, 3.2, body_dk)
+
+    # 背脊晶刺合（朝后掠）
+    for cx, hgt in ((7, 4), (10, 6), (13, 7), (16, 6), (19, 5)):
+        s.tri(cx - 2, 15, cx + 2, 15, cx, 15 - hgt, blade)
+        s.px(cx, 15 - hgt, blade_lt)
+
+    # 头部（朝前 = 画面右侧）
+    s.ell(23, 13, 4.6, 3.8, body)
+    s.ell(24, 12, 3.2, 2.4, body_lt)
+    # 长吻
+    s.rect(26, 14, 3, 2, body_dk)
+    s.rect(25, 14, 4, 2, body_lt)
+    s.px(28, 14, PAL["white"])
+    # 血眼
+    s.px(25, 12, PAL["black"])
+    s.px(25, 12, eye)
+    s.px(26, 12, PAL["red"])
+
+    # 侧腹噪点
+    dither(s, 8, 14, 13, 5, shade(body, -0.18), 0.15, rng)
+
+    s.bevel(0.2, 0.26)
+    s.outline(PAL["outline"], diag=True)
+    return s
+
+
 def gen_enemies() -> int:
     n = 0
     for f in range(3):
@@ -362,6 +421,10 @@ def gen_enemies() -> int:
             n += 1
         make_bloom(f, True, 0).save("sprites/enemies/bloom_elite_%d.png" % f)
         n += 1
+    for f in range(3):
+        make_reaver_hound(f, False).save("sprites/enemies/reaver_hound_%d.png" % f)
+        make_reaver_hound(f, True).save("sprites/enemies/reaver_hound_elite_%d.png" % f)
+        n += 2
     return n
 
 
@@ -521,12 +584,81 @@ def make_weaver(frame: int) -> Spr:
     return s
 
 
+# ------------------------------------------------------------------ Boss C：晶脉收割者
+# 暗紫兜帽死神：悬浮 + 巨型晶体镰刀 + 红光独眼 + 漂浮碎晶，4 帧。
+
+REAPER_W, REAPER_H = 64, 60
+
+
+def make_reaper(frame: int) -> Spr:
+    s = Spr(REAPER_W, REAPER_H)
+    body = PAL["reaper"]
+    body_dk = PAL["reaper_dk"]
+    body_lt = PAL["reaper_lt"]
+    eye = [PAL["cry_glow"], PAL["red_lt"], PAL["cry_glow"], PAL["red_lt"]][frame % 4]
+    rng = np.random.default_rng(83 + frame)
+
+    # 影子
+    sh = Spr(REAPER_W, REAPER_H)
+    sh.ell(32, 56, 15, 2.6, (6, 6, 12, 120))
+    s.paste(sh, 0, 0)
+
+    bob = [0, -2, -3, -1][frame % 4]
+    cy = 26 + bob
+    sway = [0, 1, 0, -1][frame % 4]
+
+    # 巨型晶体镰刀（持于身体右侧，随帧摆动）
+    hx, hy = 44 + sway, 34 - bob // 2
+    s.line(hx, hy, hx + 13, hy - 12, PAL["metal_dk"])
+    s.line(hx + 1, hy + 1, hx + 14, hy - 11, PAL["metal"])
+    # 镰刃：青晶弧刃
+    for k in range(6):
+        t = k / 5.0
+        x0 = hx + 13 - t * 9
+        y0 = hy - 11 - t * 3
+        s.ell(x0, y0 - 9, 3.0, 9.0, mix(PAL["cry"], PAL["cry_dk"], t))
+    s.px(hx + 13, hy - 22, PAL["cry_glow"])
+    s.px(hx + 12, hy - 21, PAL["cry_lt"])
+
+    # 主体：暗紫斗篷
+    s.poly([(18, cy - 10), (46, cy - 10), (52, cy + 10), (40, cy + 24), (24, cy + 24), (12, cy + 10)], body)
+    s.poly([(20, cy - 8), (44, cy - 8), (42, cy + 4), (22, cy + 4)], body_lt)
+    s.poly([(14, cy + 10), (50, cy + 10), (40, cy + 24), (24, cy + 24)], body_dk)
+    # 布纹
+    for k in range(4):
+        x0 = 22 + k * 6
+        s.line(x0, cy + 2, x0 - 2, cy + 18, shade(body, -0.22))
+    dither(s, 16, cy - 6, 32, 22, shade(body, -0.2), 0.12, rng)
+
+    # 兜帽 + 独眼
+    s.poly([(24, cy - 18), (40, cy - 18), (44, cy - 4), (32, cy + 4), (20, cy - 4)], body_dk)
+    s.tri(27, cy - 18, 37, cy - 18, 32, cy - 26, body_dk)
+    s.px(32, cy - 25, PAL["cry"])
+    s.ell(32, cy - 6, 6.5, 5.0, PAL["black"])
+    s.ell(32, cy - 6, 4.2, 3.4, eye)
+    s.ell(32, cy - 6, 1.8, 2.4, PAL["black"])
+    s.px(30, cy - 8, PAL["white"])
+
+    # 漂浮碎晶
+    for k in range(3):
+        ang = frame * 0.9 + k * 2.1
+        ox = int(round(16 + np.cos(ang) * 10))
+        oy = int(round(cy + 12 + np.sin(ang) * 4))
+        s.poly([(ox, oy - 2), (ox + 2, oy), (ox, oy + 2), (ox - 2, oy)], PAL["cry"])
+        s.px(ox, oy - 1, PAL["cry_lt"])
+
+    s.bevel(0.16, 0.24)
+    s.outline(PAL["outline"], diag=True)
+    return s
+
+
 def gen_bosses() -> int:
     n = 0
     for f in range(4):
         make_warden(f).save("sprites/bosses/warden_%d.png" % f)
         make_weaver(f).save("sprites/bosses/weaver_%d.png" % f)
-        n += 2
+        make_reaper(f).save("sprites/bosses/reaper_%d.png" % f)
+        n += 3
     return n
 
 

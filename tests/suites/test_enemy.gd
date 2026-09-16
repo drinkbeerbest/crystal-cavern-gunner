@@ -128,6 +128,17 @@ func _test_enemy_table(t: Node) -> void:
 	t.neq(husk.move_speed, bloom.move_speed, "三类敌人移速不同")
 	t.gt(bloom.move_speed, hexeye.move_speed, "自爆怪跑得比远程怪快")
 
+	# --- 第 4 层新怪：掠晶猎犬（快速冲锋型近战） ---
+	var reaver: EnemyData = EnemyDB.create_data("reaver_hound")
+	t.not_null(reaver, "EnemyDB 能创建 reaver_hound（掠晶猎犬）")
+	t.eq(reaver.archetype, EnemyData.Archetype.MELEE, "reaver_hound 复用近战原型")
+	t.eq(reaver.max_health, 28.0, "reaver_hound 生命 28（比 husk 34 更脆）")
+	t.gt(reaver.move_speed, husk.move_speed, "掠晶猎犬跑得比矿道行者快")
+	t.gt(reaver.charge_speed, husk.charge_speed, "掠晶猎犬冲锋更快")
+	t.lt(reaver.charge_cooldown, husk.charge_cooldown, "掠晶猎犬冲锋冷却更短")
+	t.eq(reaver.frames().size(), 3, "reaver_hound 3 帧贴图齐全")
+	t.check(ResourceLoader.exists(reaver.sprite_path(0)), "reaver_hound 贴图存在")
+
 	# --- 精英：叠加覆盖而非独立表 ---
 	var elite: EnemyData = EnemyDB.create_data("husk_elite")
 	t.not_null(elite, "能创建精英 husk")
@@ -140,7 +151,7 @@ func _test_enemy_table(t: Node) -> void:
 	t.gt(elite.armor, husk.armor, "精英有护甲")
 	t.gt(elite.score, husk.score, "精英得分更高")
 	t.eq(EnemyDB.create_data("hexeye_elite").burst_count, 3, "精英 hexeye 一轮三连发")
-	t.eq(EnemyDB.ids().size(), 8, "共 8 个敌人 id（3 基础 + 3 精英 + 2 Boss）")
+	t.eq(EnemyDB.ids().size(), 11, "共 11 个敌人 id（4 基础 + 4 精英 + 3 Boss）")
 
 	# --- 层数成长 ---
 	var late: EnemyData = EnemyDB.create_data("husk", 3)

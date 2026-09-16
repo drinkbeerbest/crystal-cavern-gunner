@@ -908,13 +908,15 @@ func _activate_current_room() -> void:
 			spawner.start_wave()
 
 
-## M7：本层 Boss 房投放的敌人 id（按层数轮换两个 Boss）
+## M7：本层 Boss 房投放的敌人 id（按层数轮换 Boss，终极层出收割者）
 func _boss_wave_ids() -> Array:
 	match GameState.floor_index:
 		2:
 			return ["weaver"]
 		3:
 			return ["warden", "weaver"]
+		4:
+			return ["reaper"]
 		_:
 			return ["warden"]
 
@@ -1024,7 +1026,7 @@ func _advance_floor() -> void:
 	_start_floor(GameState.floor_index)
 	if player != null and is_instance_valid(player):
 		player.restore_from_state()
-	AudioMgr.play_bgm("dungeon_%d" % clampi(GameState.floor_index, 1, 3))
+	AudioMgr.play_bgm("dungeon_%d" % clampi(GameState.floor_index, 1, G.TOTAL_FLOORS))
 	AudioMgr.play_sfx("level_start", 0.0, -6.0)
 	EventBus.floor_started.emit(GameState.floor_index, GameState.floor_seed())
 	_toast("进入第 %d 层 · 敌人更强了" % GameState.floor_index, 2.6)

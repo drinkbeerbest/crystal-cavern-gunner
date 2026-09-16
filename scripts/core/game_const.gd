@@ -11,14 +11,15 @@ const CAMERA_ZOOM: float = 2.0
 ## 房间尺寸（单位：瓦片，含四周墙体），随机在其中挑选
 const ROOM_SIZES: Array[Vector2i] = [
 	Vector2i(21, 13), Vector2i(25, 15), Vector2i(27, 15), Vector2i(29, 17),
+	Vector2i(31, 17), Vector2i(33, 19),
 ]
-const BOSS_ROOM_SIZE: Vector2i = Vector2i(33, 21)
+const BOSS_ROOM_SIZE: Vector2i = Vector2i(35, 23)
 const START_ROOM_SIZE: Vector2i = Vector2i(19, 13)
 
 # ---------- 地牢 ----------
 const MIN_ROOMS_PER_FLOOR: int = 5
 const MAX_ROOMS_PER_FLOOR: int = 10
-const TOTAL_FLOORS: int = 3
+const TOTAL_FLOORS: int = 4
 
 # ---------- 物理层（位掩码，必须是 2 的幂） ----------
 const LAYER_WORLD: int = 1
@@ -116,12 +117,13 @@ const WAVE_COUNT_PER_FLOOR: int = 1
 ## 单房间敌人数量上限（避免小房间挤爆）
 const WAVE_MAX_COUNT: int = 12
 ## 每层把普通怪替换成精英怪的概率（键为层数，超出取最后一档）
-const WAVE_ELITE_CHANCE: Dictionary = {1: 0.0, 2: 0.14, 3: 0.26}
-## 每层的类型权重（键为层数）：近战 / 远程 / 自爆
+const WAVE_ELITE_CHANCE: Dictionary = {1: 0.0, 2: 0.14, 3: 0.26, 4: 0.4}
+## 每层的类型权重（键为层数）：近战 / 远程 / 自爆 / 掠晶猎犬
 const WAVE_TYPE_WEIGHTS: Dictionary = {
 	1: {"husk": 50.0, "hexeye": 32.0, "bloom": 18.0},
 	2: {"husk": 38.0, "hexeye": 34.0, "bloom": 28.0},
-	3: {"husk": 32.0, "hexeye": 34.0, "bloom": 34.0},
+	3: {"husk": 30.0, "hexeye": 30.0, "bloom": 26.0, "reaver_hound": 14.0},
+	4: {"husk": 18.0, "hexeye": 24.0, "bloom": 22.0, "reaver_hound": 36.0},
 }
 ## 一波拆成几批投放，以及批次之间的间隔（秒）
 const WAVE_BATCHES: int = 2
