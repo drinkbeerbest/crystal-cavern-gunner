@@ -262,6 +262,13 @@ func _handle_weapon_switching() -> void:
 		cycle_weapon(1)
 	if Input.is_action_just_pressed("weapon_prev"):
 		cycle_weapon(-1)
+	# wheel outside shop switches weapons (shared action with shop paging)
+	if _focused_interactable == null or not _focused_interactable.has_method("cycle_cursor"):
+		if Input.is_action_just_pressed("shop_prev"):
+			cycle_weapon(-1)
+		elif Input.is_action_just_pressed("shop_next"):
+			cycle_weapon(1)
+
 
 
 func _tick_regeneration(delta: float) -> void:
