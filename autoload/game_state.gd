@@ -46,6 +46,14 @@ var has_floor_key: bool = false
 var best_floor: int = 0
 var unlocked_floor: int = 1
 var total_runs: int = 0
+## 账户金币：跨局持久化，开局前可在武器图鉴中花费，替换初始武器。
+## 完全通关（最后一层）时，当局金币的 1/3 转化为账户金币。
+const ACCOUNT_GOLD_START: int = 200
+var account_gold: int = ACCOUNT_GOLD_START
+## 武器图鉴选定的开局初始武器 id（默认手枪，购买后可换成其他品阶）
+var starter_weapon_id: String = "pistol"
+## 最近一次 end_run 时通关转化的账户金币数（结算界面展示用）
+var last_account_added: int = 0
 var settings: Dictionary = {
 	"master_volume": 0.85,
 	"sfx_volume": 0.9,
@@ -138,6 +146,11 @@ func restore_run(data: Dictionary) -> bool:
 func end_run(victory: bool) -> void:
 	run_active = false
 	best_floor = max(best_floor, floor_index)
+	# 完全通关（打完最后一层）时，当局积攒金币的 1/3 转化为账户金币
+	last_account_added = 0
+	if victory and floor_index >= G.TOTAL_FLOORS:
+		last_account_added = gold / 3
+		account_gold += last_account_added
 	_save_meta()
 	SaveMgr.clear_run()
 	EventBus.run_finished.emit(victory, floor_index, gold)
@@ -407,11 +420,35 @@ func _load_meta_and_settings() -> void:
 	best_floor = int(meta.get("best_floor", 0))
 	unlocked_floor = maxi(int(meta.get("unlocked_floor", 1)), 1)
 	total_runs = int(meta.get("total_runs", 0))
+	account_gold = maxi(int(meta.get("account_gold", ACCOUNT_GOLD_START)), 0)
+	starter_weapon_id = str(meta.get("starter_weapon_id", WeaponDB.STARTER_ID))
+	last_account_added = 0
 	_apply_display_settings()
 
 
 func _save_meta() -> void:
-	SaveMgr.save_meta({"best_floor": best_floor, "unlocked_floor": unlocked_floor, "total_runs": total_runs})
+	SaveMgr.save_meta({
+		"best_floor": best_floor,
+		"unlocked_floor": unlocked_floor,
+		"total_runs": total_runs,
+		"account_gold": account_gold,
+		"starter_weapon_id": starter_weapon_id,
+	})
+
+
+## 武器图鉴：用账户金币购买武器并设为开局初始武器（手枪价格 0，可随时免费换回）。
+## 账户金币不足或武器 id 未知时返回 false。
+func buy_starter_weapon(weapon_id: String) -> bool:
+	if not WeaponDB.has_weapon(weapon_id):
+		return false
+	var price: int = int(WeaponDB.TABLE[weapon_id].get("price", 0))
+	if account_gold < price:
+		return false
+	if price > 0:
+		account_gold -= price
+	starter_weapon_id = weapon_id
+	_save_meta()
+	return true
 
 
 ## 把当前局写入存档（换层/暂停时调用），供主菜单"继续"使用

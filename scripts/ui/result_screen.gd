@@ -56,7 +56,12 @@ func _refresh() -> void:
 	row = _stat_row("到达层数", "%d" % int(result.get("floor_reached", 0)), row)
 	row = _stat_row("本局金币", "%d" % int(result.get("gold", 0)), row)
 	row = _stat_row("最高层数", "%d" % int(result.get("best_floor", GameState.best_floor)), row)
-	_stat_row("累计局数", "%d" % int(result.get("total_runs", GameState.total_runs)), row)
+	row = _stat_row("累计局数", "%d" % int(result.get("total_runs", GameState.total_runs)), row)
+	# 完全通关：显示当局金币转化为账户金币的信息
+	var account_added: int = int(result.get("account_added", 0))
+	if victory and account_added > 0:
+		row = _stat_row("转入账户金币", "+%d" % account_added, row)
+		_stat_row("账户金币", "%d" % int(result.get("account_gold", GameState.account_gold)), row)
 
 	if _again_button != null:
 		_again_button.grab_focus()

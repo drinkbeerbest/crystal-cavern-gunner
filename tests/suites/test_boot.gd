@@ -22,9 +22,11 @@ func run(t: Node) -> void:
 	_test_gold(t)
 	_test_talents(t)
 	_test_floors(t)
+	_test_account(t)
 	_test_settings(t)
 	_test_run_save(t)
 	_test_main_scene(t)
+	await _test_pause_blocks_damage(t)
 
 
 # ---------- 工程配置 ----------
@@ -207,6 +209,51 @@ func _test_floors(t: Node) -> void:
 	t.eq(GameState.floor_index, G.TOTAL_FLOORS, "层数不超过总层数")
 
 
+# ---------- 账户金币 / 武器图鉴 ----------
+
+func _test_account(t: Node) -> void:
+	# 初始账户金币 200
+	t.eq(GameState.account_gold, GameState.ACCOUNT_GOLD_START, "初始账户金币 200")
+
+	# 免费换回手枪
+	GameState.buy_starter_weapon("pistol")
+	t.eq(GameState.starter_weapon_id, "pistol", "可免费换回手枪")
+
+	# 昂贵武器买不起
+	t.check(not GameState.buy_starter_weapon("sniper"), "账户金币不足时购买失败")
+
+	# 用足够的账户金币买一把传说武器
+	GameState.account_gold = 300
+	t.check(GameState.buy_starter_weapon("sniper"), "账户金币足够时购买成功")
+	t.eq(GameState.starter_weapon_id, "sniper", "购买后初始武器为狙击枪")
+	t.eq(GameState.account_gold, 10, "购买后账户扣款 290")
+
+	# 未知武器 id 拒绝
+	t.check(not GameState.buy_starter_weapon("no_such_weapon"), "未知武器购买失败")
+
+	# 完全通关：当局金币 1/3 转入账户
+	GameState.new_run(31337)
+	GameState.floor_index = G.TOTAL_FLOORS
+	GameState.gold = 300
+	GameState.end_run(true)
+	t.eq(GameState.last_account_added, 100, "通关后 300 金币的 1/3 = 100 转入账户")
+	t.eq(GameState.account_gold, 110, "账户金币 = 10 + 100")
+
+	# 未通关不转化
+	GameState.account_gold = 25
+	GameState.new_run(111)
+	GameState.floor_index = 1
+	GameState.gold = 500
+	GameState.end_run(false)
+	t.eq(GameState.last_account_added, 0, "失败局不转化金币")
+	t.eq(GameState.account_gold, 25, "失败局账户金币不变")
+
+	# 归位初始状态，避免影响后续套件 / 玩家存档
+	GameState.account_gold = GameState.ACCOUNT_GOLD_START
+	GameState.starter_weapon_id = WeaponDB.STARTER_ID
+	GameState._save_meta()
+
+
 # ---------- 设置 ----------
 
 func _test_settings(t: Node) -> void:
@@ -266,5 +313,41 @@ func _test_main_scene(t: Node) -> void:
 	t.not_null(instance.current_screen, "启动后自动进入菜单界面")
 	t.check(not t.get_tree().paused, "启动后不处于暂停状态")
 	t.eq(instance.get_child_count(), 1, "路由只挂载一个当前界面")
+	# 暂停修复：Main 是 ALWAYS，子界面必须显式 PAUSABLE，否则暂停时世界仍在运行
+	t.eq(int(instance.current_screen.process_mode), int(Node.PROCESS_MODE_PAUSABLE), "路由子界面为 PAUSABLE（暂停时才停得下来）")
 	t.get_tree().root.remove_child(instance)
 	instance.free()
+
+
+## 暂停修复的行为级验证：get_tree().paused 时玩家受击必须被忽略，
+## 解除暂停后恢复正常。防止 Area2D 物理回调在暂停状态仍触发伤害。
+func _test_pause_blocks_damage(t: Node) -> void:
+	GameState.new_run(20260914)
+	var world := GameWorld.new()
+	world.name = "PauseTestWorld"
+	world.auto_demo_wave = false
+	t.add_child(world)
+	if world.player == null:
+		t.check(false, "暂停测试需要世界内的玩家节点")
+		world.queue_free()
+		await t.get_tree().process_frame
+		return
+	var player: Player = world.player
+	player.clear_invulnerable()
+
+	var health_before: float = float(player.stats.get("health", 0.0))
+	var shield_before: float = float(player.stats.get("shield", 0.0))
+	var life_before: float = health_before + shield_before
+	t.get_tree().paused = true
+	player.take_hit(999.0, false, Vector2.ZERO, 0)
+	t.get_tree().paused = false
+	t.near(float(player.stats.get("health", 0.0)), health_before, 0.001, "暂停期间受击不扣血")
+	t.near(float(player.stats.get("shield", 0.0)), shield_before, 0.001, "暂停期间受击不扣盾")
+
+	player.take_hit(999.0, false, Vector2.ZERO, 0)
+	var life_now: float = float(player.stats.get("health", 0.0)) + float(player.stats.get("shield", 0.0))
+	t.lt(life_now, life_before, "解除暂停后受击正常扣血")
+
+	world.clear_entities(false)
+	world.queue_free()
+	await t.get_tree().process_frame

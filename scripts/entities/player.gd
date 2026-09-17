@@ -656,6 +656,10 @@ func is_dead_or_disabled() -> bool:
 
 ## 受击契约实现
 func take_hit(amount: float, is_crit: bool, knockback: Vector2, _source: int) -> void:
+	# 暂停兜底：物理回调（Area2D body_entered / 接触伤害）在 paused 下仍可能触发，
+	# 暂停期间一律不结算伤害，保证"暂停 = 世界停止"
+	if get_tree().paused:
+		return
 	if dead or invulnerable:
 		return
 	var damage: float = maxf(amount - _stat("armor"), 1.0)

@@ -195,9 +195,10 @@ func _spawn_player() -> void:
 	# 武器在玩家创建前写入 GameState：Player._ready() 会直接接手这份列表，
 	# 避免"起始手枪 + 试验三把"超出 3 个栏位而互相顶替。
 	if dungeon_mode:
-		# 地牢模式：读档继续时沿用存档里的武器；新开一局（new_run 已清空）发三把核心武器
+		# 地牢模式：读档继续时沿用存档里的武器；新开一局（new_run 已清空）
+		# 发"武器图鉴初始武器 + 两把试验武器"，默认状况与原来的核心三把一致
 		if GameState.weapons.is_empty():
-			for weapon: Variant in WeaponDB.core_three():
+			for weapon: Variant in WeaponDB.starter_kit(GameState.starter_weapon_id):
 				GameState.add_weapon(weapon)
 			GameState.weapon_index = 0
 	else:

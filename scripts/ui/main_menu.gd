@@ -24,6 +24,9 @@ var _canvas: Control
 var _menu_root: Control
 var _floor_select_root: Control
 var _settings_root: Control
+var _armory_root: Control
+var _armory_wallet_label: Label
+var _armory_cards: Array = []
 var _start_button: Button
 var _continue_button: Button
 var _hint_label: Label
@@ -39,8 +42,10 @@ func _ready() -> void:
 	_build_menu()
 	_build_floor_select()
 	_build_settings()
+	_build_armory()
 	_floor_select_root.visible = false
 	_settings_root.visible = false
+	_armory_root.visible = false
 	_refresh_continue()
 
 	if _start_button != null:
@@ -93,25 +98,26 @@ func _build_menu() -> void:
 			_menu_root, HORIZONTAL_ALIGNMENT_CENTER)
 
 	var box := VBoxContainer.new()
-	box.position = Vector2((LOGICAL_SIZE.x - 160.0) * 0.5, 148)
-	box.size = Vector2(160, 120)
+	box.position = Vector2((LOGICAL_SIZE.x - 160.0) * 0.5, 140)
+	box.size = Vector2(160, 170)
 	box.add_theme_constant_override("separation", 6)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu_root.add_child(box)
 
 	_start_button = _menu_button("开始游戏", box, _on_start_pressed)
 	_continue_button = _menu_button("继续上次", box, _on_continue_pressed)
+	_menu_button("武器图鉴", box, _on_armory_pressed)
 	_menu_button("设  置", box, _on_settings_pressed)
 	_menu_button("退出游戏", box, _on_quit_pressed)
 
-	var meta_text: String = "最高层数 %d · 解锁至 %d 层 · 累计 %d 局 · v%s" % [
-		int(GameState.best_floor), int(GameState.unlocked_floor), int(GameState.total_runs),
+	var meta_text: String = "账户金币 %d · 最高层数 %d · 累计 %d 局 · v%s" % [
+		int(GameState.account_gold), int(GameState.best_floor), int(GameState.total_runs),
 		str(ProjectSettings.get_setting("application/config/version", "0.1.0")),
 	]
-	_label(meta_text, Vector2(0, 322), Vector2(LOGICAL_SIZE.x, 10), 9, COLOR_DIM,
+	_label(meta_text, Vector2(0, 324), Vector2(LOGICAL_SIZE.x, 10), 9, COLOR_DIM,
 			_menu_root, HORIZONTAL_ALIGNMENT_CENTER)
 
-	_hint_label = _label("Enter 开始 · Esc 退出设置", Vector2(0, 336), Vector2(LOGICAL_SIZE.x, 10),
+	_hint_label = _label("Enter 开始 · Esc 退出设置", Vector2(0, 338), Vector2(LOGICAL_SIZE.x, 10),
 			9, Color(0.42, 0.46, 0.56, 1.0), _menu_root, HORIZONTAL_ALIGNMENT_CENTER)
 
 
@@ -186,6 +192,120 @@ func _build_settings() -> void:
 	back.size = Vector2(96, 22)
 	panel.add_child(back)
 	back.pressed.connect(_on_settings_back)
+
+
+func _build_armory() -> void:
+	_armory_root = Control.new()
+	_armory_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_armory_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_canvas.add_child(_armory_root)
+
+	var panel := _nine_patch("panel_9.png", Vector2(10, 14), Vector2(620, 330), 6, _armory_root)
+	_label("武 器 图 鉴", Vector2(0, 10), Vector2(620, 16), 12, COLOR_TITLE, panel, HORIZONTAL_ALIGNMENT_CENTER)
+
+	_armory_wallet_label = _label("", Vector2(16, 28), Vector2(300, 12), 10,
+			Color(1.0, 0.84, 0.42, 1.0), panel, HORIZONTAL_ALIGNMENT_LEFT)
+
+	var card_w: float = 186.0
+	var card_h: float = 56.0
+	var gap_x: float = 8.0
+	var gap_y: float = 8.0
+	var start_x: float = 16.0
+	var start_y: float = 44.0
+
+	var index: int = 0
+	for weapon_id: Variant in WeaponDB.ids():
+		var col: int = index % 3
+		var row: int = index / 3
+		var card_pos := Vector2(start_x + col * (card_w + gap_x), start_y + row * (card_h + gap_y))
+		_armory_cards.append(_armory_card(panel, str(weapon_id), card_pos, Vector2(card_w, card_h)))
+		index += 1
+
+	var back := _pixel_button("返  回")
+	back.position = Vector2((620 - 96) * 0.5, 300)
+	back.size = Vector2(96, 22)
+	panel.add_child(back)
+	back.pressed.connect(_on_armory_back)
+
+
+## 单张武器卡片：图标 + 名称（稀有度色）+ 伤害/耗能 + 价格（或"已装备"），点击购买/换装
+func _armory_card(parent: Control, weapon_id: String, pos: Vector2, card_size: Vector2) -> Dictionary:
+	var weapon: WeaponData = WeaponDB.create(weapon_id)
+	if weapon == null:
+		return {}
+	var card := Control.new()
+	card.position = pos
+	card.size = card_size
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(card)
+
+	var bg := _nine_patch("panel_9.png", Vector2.ZERO, card_size, 4, card)
+
+	var icon := TextureRect.new()
+	icon.texture = weapon.icon_texture()
+	icon.position = Vector2(6, 6)
+	icon.size = Vector2(20, 20)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(icon)
+
+	var rarity_color: Color = _rarity_color(int(weapon.rarity))
+	var name_label := _label(weapon.display_name, Vector2(34, 3), Vector2(146, 13), 10,
+			rarity_color, card, HORIZONTAL_ALIGNMENT_LEFT)
+	var stat_label := _label("伤害 %d · 耗能 %d" % [int(weapon.damage), int(weapon.energy_cost)],
+			Vector2(34, 18), Vector2(146, 11), 8, COLOR_DIM, card, HORIZONTAL_ALIGNMENT_LEFT)
+	var price_label := _label("", Vector2(34, 32), Vector2(146, 12), 9,
+			Color(0.68, 0.86, 1.0, 1.0), card, HORIZONTAL_ALIGNMENT_LEFT)
+
+	var click := Button.new()
+	click.text = ""
+	click.position = Vector2.ZERO
+	click.size = card_size
+	click.flat = true
+	click.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.add_child(click)
+	click.pressed.connect(_on_armory_weapon_pressed.bind(weapon_id))
+
+	var price: int = int(WeaponDB.TABLE[weapon_id].get("price", 0))
+	if weapon_id == GameState.starter_weapon_id:
+		price_label.text = "已装备"
+		price_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.42, 1.0))
+	elif price == 0:
+		price_label.text = "免费"
+	else:
+		price_label.text = "价格 %d" % price
+	return {"weapon_id": weapon_id, "card": card, "price_label": price_label}
+
+
+## 账户金币变化后刷新图鉴面板（主菜单打开时本金显示 + 卡片价格状态）
+func _refresh_armory() -> void:
+	if _armory_root == null:
+		return
+	_armory_wallet_label.text = "账户金币：%d" % int(GameState.account_gold)
+	for entry: Dictionary in _armory_cards:
+		var weapon_id: String = str(entry.get("weapon_id", ""))
+		if weapon_id.is_empty():
+			continue
+		var price_label: Label = entry.get("price_label")
+		if price_label == null:
+			continue
+		if weapon_id == GameState.starter_weapon_id:
+			price_label.text = "已装备"
+			price_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.42, 1.0))
+		else:
+			var price: int = int(WeaponDB.TABLE[weapon_id].get("price", 0))
+			price_label.text = "免费" if price == 0 else "价格 %d" % price
+			price_label.add_theme_color_override("font_color", Color(0.68, 0.86, 1.0, 1.0))
+
+
+static func _rarity_color(rarity: int) -> Color:
+	match rarity:
+		WeaponData.Rarity.UNCOMMON:
+			return Color(0.55, 0.9, 0.58, 1.0)
+		WeaponData.Rarity.RARE:
+			return Color(0.45, 0.68, 1.0, 1.0)
+		WeaponData.Rarity.LEGENDARY:
+			return Color(1.0, 0.78, 0.36, 1.0)
+	return Color(0.83, 0.86, 0.92, 1.0)
 
 
 func _volume_row(parent: Control, title: String, key: String, y: float) -> float:
@@ -315,6 +435,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_on_floor_select_back()
 			get_viewport().set_input_as_handled()
 			return
+		if _armory_root.visible:
+			_on_armory_back()
+			get_viewport().set_input_as_handled()
+			return
 		if _settings_root.visible:
 			_close_settings()
 			get_viewport().set_input_as_handled()
@@ -357,6 +481,36 @@ func _on_settings_pressed() -> void:
 
 func _on_settings_back() -> void:
 	_close_settings()
+
+
+func _on_armory_pressed() -> void:
+	AudioMgr.play_sfx("ui_click")
+	_refresh_armory()
+	_menu_root.visible = false
+	_armory_root.visible = true
+	_set_hint("点击武器可花费账户金币替换初始武器 · Esc 返回")
+
+
+func _on_armory_back() -> void:
+	AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+	_armory_root.visible = false
+	_menu_root.visible = true
+	_refresh_continue()
+	_set_hint("Enter 开始 · Esc 退出设置")
+	if _start_button != null:
+		_start_button.grab_focus()
+
+
+func _on_armory_weapon_pressed(weapon_id: String) -> void:
+	if GameState.starter_weapon_id == weapon_id:
+		return
+	if GameState.buy_starter_weapon(weapon_id):
+		AudioMgr.play_sfx("ui_click")
+		_refresh_armory()
+		_set_hint("已装备：" + str(WeaponDB.create(weapon_id).display_name))
+	else:
+		AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+		_set_hint("账户金币不足，先打通最后一层攒钱吧")
 
 
 func _close_settings() -> void:

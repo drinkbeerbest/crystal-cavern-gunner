@@ -252,14 +252,14 @@ def make_smoke(frame: int) -> Spr:
 
 
 def make_slash(frame: int) -> Spr:
-    """近战挥砍弧：4 帧从细到宽再消散。"""
-    s = Spr(26, 26)
-    cx = cy = 13.0
-    r = 7 + frame * 2.4
-    thick = 2.6 - frame * 0.45
-    a0 = -np.pi * 0.55
-    a1 = np.pi * 0.35
-    steps = 40
+    """近战挥砍弧：加大半圈剑影，4 帧从细到宽再消散。"""
+    s = Spr(34, 34)
+    cx = cy = 17.0
+    r = 10 + frame * 3.2
+    thick = 3.4 - frame * 0.55
+    a0 = -np.pi * 0.65
+    a1 = np.pi * 0.45
+    steps = 56
     for i in range(steps + 1):
         a = a0 + (a1 - a0) * i / steps
         x = cx + np.cos(a) * r
@@ -267,7 +267,7 @@ def make_slash(frame: int) -> Spr:
         for t in np.linspace(-thick, thick, max(2, int(thick * 3))):
             s.px(int(round(x + np.cos(a + np.pi / 2) * t)),
                  int(round(y + np.sin(a + np.pi / 2) * t)), PAL["cry_lt"])
-    s.ring(cx, cy, r, r, PAL["white"], thickness=max(0.6, thick * 0.45))
+    s.ring(cx, cy, r, r, PAL["white"], thickness=max(0.8, thick * 0.5))
     if frame >= 2:
         s.alpha_scale(0.75 - (frame - 2) * 0.25)
     return s

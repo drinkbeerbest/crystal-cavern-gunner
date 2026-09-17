@@ -110,6 +110,13 @@ func gte(actual: float, threshold: float, message: String) -> void:
 		_record(false, "%s  <期望 >= %f | 实际 %f>" % [message, threshold, actual])
 
 
+func lt(actual: float, threshold: float, message: String) -> void:
+	if actual < threshold:
+		_record(true, message)
+	else:
+		_record(false, "%s  <期望 < %f | 实际 %f>" % [message, threshold, actual])
+
+
 func lte(actual: float, threshold: float, message: String) -> void:
 	if actual <= threshold:
 		_record(true, message)

@@ -104,6 +104,10 @@ func _swap_screen(screen: Node) -> void:
 	if current_screen != null:
 		current_screen.queue_free()
 	current_screen = screen
+	# 关键修复：Main 是 ALWAYS，若子界面不显式覆盖会继承 ALWAYS，
+	# 导致 get_tree().paused 时游戏世界仍然全速运行（敌人/子弹继续攻击）。
+	# 显式设回 PAUSABLE，让世界/敌人/子弹在暂停时冻结；HUD 自身 ALWAYS 保持响应。
+	screen.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(screen)
 
 
@@ -130,5 +134,7 @@ func _on_run_finished(victory: bool, floor_reached: int, gold_earned: int) -> vo
 		"gold": gold_earned,
 		"best_floor": GameState.best_floor,
 		"total_runs": GameState.total_runs,
+		"account_added": GameState.last_account_added,
+		"account_gold": GameState.account_gold,
 	}
 	show_result(victory)

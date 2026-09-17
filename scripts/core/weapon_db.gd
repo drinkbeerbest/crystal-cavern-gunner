@@ -65,8 +65,8 @@ const TABLE: Dictionary = {
 	},
 	"wand": {
 		"display_name": "游晶魔杖", "kind": K.HOMING, "rarity": R.RARE, "price": 170,
-		"damage": 29, "fire_rate": 1.7, "bullet_speed": 285.0, "spread_deg": 9.0,
-		"pellets": 1, "energy_cost": 10, "crit_bonus": 0.06, "knockback": 70.0,
+"damage": 29, "fire_rate": 1.7, "bullet_speed": 285.0, "spread_deg": 9.0,
+		"pellets": 1, "energy_cost": 8, "crit_bonus": 0.06, "knockback": 70.0,
 		"pierce": 0, "bullet_lifetime": 2.6, "auto_fire": true, "recoil": 10.0, "shake": 1.0,
 		"homing_strength": 6.5,
 		"sfx": "shoot_wand", "projectile_frames": ["bullet_orb"],
@@ -77,7 +77,7 @@ const TABLE: Dictionary = {
 		"damage": 42, "fire_rate": 1.9, "bullet_speed": 0.0, "spread_deg": 0.0,
 		"pellets": 1, "energy_cost": 0, "crit_bonus": 0.1, "knockback": 210.0,
 		"pierce": 99, "bullet_lifetime": 0.0, "auto_fire": true, "recoil": 0.0, "shake": 1.6,
-		"melee_range": 72.0, "melee_arc_deg": 140.0,
+		"melee_range": 92.0, "melee_arc_deg": 160.0,
 		"sfx": "swing_blade", "projectile_frames": ["slash_0"],
 		"description": "不耗能的近战武器，扇形挥砍并强力击退。",
 	},
@@ -91,15 +91,15 @@ const TABLE: Dictionary = {
 	},
 	"sniper": {
 		"display_name": "深渊狙击枪", "kind": K.PROJECTILE, "rarity": R.LEGENDARY, "price": 290,
-		"damage": 78, "fire_rate": 0.65, "bullet_speed": 800.0, "spread_deg": 0.5,
-		"pellets": 1, "energy_cost": 14, "crit_bonus": 0.18, "knockback": 320.0,
+"damage": 98, "fire_rate": 0.65, "bullet_speed": 800.0, "spread_deg": 0.5,
+		"pellets": 1, "energy_cost": 15, "crit_bonus": 0.18, "knockback": 320.0,
 		"pierce": 2, "bullet_lifetime": 2.5, "auto_fire": false, "recoil": 140.0, "shake": 3.8,
 		"sfx": "shoot_rifle", "projectile_frames": ["bullet_p_1"],
 		"description": "超远射程与极高穿透，一击必杀的重型武器。",
 	},
 	"crossbow": {
 		"display_name": "晶石穿心箭", "kind": K.PROJECTILE, "rarity": R.RARE, "price": 140,
-		"damage": 49, "fire_rate": 1.0, "bullet_speed": 580.0, "spread_deg": 1.5,
+		"damage": 55, "fire_rate": 1.0, "bullet_speed": 580.0, "spread_deg": 1.5,
 		"pellets": 1, "energy_cost": 7, "crit_bonus": 0.1, "knockback": 180.0,
 		"pierce": 1, "bullet_lifetime": 1.6, "auto_fire": false, "recoil": 60.0, "shake": 2.0,
 		"sfx": "shoot_rifle", "projectile_frames": ["bullet_p_0"],
@@ -163,6 +163,21 @@ static func all() -> Array:
 ## 三把标准初始/试验武器（手枪 / 霰弹枪 / 激光枪）
 static func core_three() -> Array:
 	return [create("pistol"), create("shotgun"), create("laser")]
+
+
+## 开局武器组：玩家在武器图鉴购买的初始武器 + 两把试验武器（不重复，保持 3 把开局）。
+## starter_id 为空或无效时退回默认手枪。
+static func starter_kit(starter_id: String = STARTER_ID) -> Array:
+	var starter: WeaponData = create(starter_id)
+	if starter == null:
+		starter = create(STARTER_ID)
+	var out: Array = [starter]
+	for weapon: Variant in core_three():
+		if out.size() >= 3:
+			break
+		if str(weapon.id) != str(starter.id):
+			out.append(create(str(weapon.id)))
+	return out
 
 
 static func from_dict(data: Dictionary) -> WeaponData:
