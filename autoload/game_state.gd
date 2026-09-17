@@ -48,10 +48,10 @@ var unlocked_floor: int = 1
 var total_runs: int = 0
 ## 账户金币：跨局持久化，开局前可在武器图鉴中花费，替换初始武器。
 ## 完全通关（最后一层）时，当局金币的 1/3 转化为账户金币。
-const ACCOUNT_GOLD_START: int = 200
+const ACCOUNT_GOLD_START: int = 300
 var account_gold: int = ACCOUNT_GOLD_START
-## 武器图鉴选定的开局初始武器 id（默认手枪，购买后可换成其他品阶）
-var starter_weapon_id: String = "pistol"
+## 武器图鉴选定的开局初始 3 把武器 id（默认核心三把）
+var starter_kit_ids: Array[String] = ["pistol", "shotgun", "laser"]
 ## 最近一次 end_run 时通关转化的账户金币数（结算界面展示用）
 var last_account_added: int = 0
 var settings: Dictionary = {
@@ -421,7 +421,16 @@ func _load_meta_and_settings() -> void:
 	unlocked_floor = maxi(int(meta.get("unlocked_floor", 1)), 1)
 	total_runs = int(meta.get("total_runs", 0))
 	account_gold = maxi(int(meta.get("account_gold", ACCOUNT_GOLD_START)), 0)
-	starter_weapon_id = str(meta.get("starter_weapon_id", WeaponDB.STARTER_ID))
+	var loaded_kit: Array = meta.get("starter_kit_ids", [])
+	if loaded_kit.is_empty():
+		starter_kit_ids = ["pistol", "shotgun", "laser"]
+	else:
+		starter_kit_ids = []
+		for weapon_id: Variant in loaded_kit:
+			starter_kit_ids.append(str(weapon_id))
+		# 如果存档数据不完整，补齐到 3 把
+		while starter_kit_ids.size() < 3:
+			starter_kit_ids.append(WeaponDB.STARTER_ID)
 	last_account_added = 0
 	_apply_display_settings()
 
@@ -432,21 +441,23 @@ func _save_meta() -> void:
 		"unlocked_floor": unlocked_floor,
 		"total_runs": total_runs,
 		"account_gold": account_gold,
-		"starter_weapon_id": starter_weapon_id,
+		"starter_kit_ids": starter_kit_ids,
 	})
 
 
-## 武器图鉴：用账户金币购买武器并设为开局初始武器（手枪价格 0，可随时免费换回）。
-## 账户金币不足或武器 id 未知时返回 false。
-func buy_starter_weapon(weapon_id: String) -> bool:
+## 武器图鉴：用账户金币购买武器并替换指定槽位的初始武器（手枪免费）。
+## 账户金币不足、武器 id 未知或槽位越界时返回 false。
+func buy_kit_weapon(weapon_id: String, slot_index: int) -> bool:
 	if not WeaponDB.has_weapon(weapon_id):
+		return false
+	if slot_index < 0 or slot_index >= starter_kit_ids.size():
 		return false
 	var price: int = int(WeaponDB.TABLE[weapon_id].get("price", 0))
 	if account_gold < price:
 		return false
 	if price > 0:
 		account_gold -= price
-	starter_weapon_id = weapon_id
+	starter_kit_ids[slot_index] = weapon_id
 	_save_meta()
 	return true
 

@@ -26,7 +26,9 @@ var _floor_select_root: Control
 var _settings_root: Control
 var _armory_root: Control
 var _armory_wallet_label: Label
-var _armory_cards: Array = []
+var _armory_kit_slots: Array = []   ## 上方 3 槽位字典 {weapon_id, card, bg, icon, name_label, stat_label}
+var _armory_cards: Array = []       ## 下方 12 武器卡片字典 {weapon_id, card, price_label}
+var _selected_slot: int = -1        ## 当前选中的槽位下标（-1=未选）
 var _start_button: Button
 var _continue_button: Button
 var _hint_label: Label
@@ -206,12 +208,33 @@ func _build_armory() -> void:
 	_armory_wallet_label = _label("", Vector2(16, 28), Vector2(300, 12), 10,
 			Color(1.0, 0.84, 0.42, 1.0), panel, HORIZONTAL_ALIGNMENT_LEFT)
 
+	# ----- 上方：当前开局 3 槽位（可点选）-----
+	_label("当前开局武器（点击槽位选择，再在下方购买武器替换）",
+			Vector2(16, 42), Vector2(588, 11), 8, COLOR_DIM, panel, HORIZONTAL_ALIGNMENT_LEFT)
+
+	var slot_w: float = 186.0
+	var slot_h: float = 52.0
+	var slot_gap: float = 8.0
+	var slot_y: float = 58.0
+	for i: int in range(3):
+		var slot_pos := Vector2(16.0 + i * (slot_w + slot_gap), slot_y)
+		_armory_kit_slots.append(_armory_kit_slot(panel, i, slot_pos, Vector2(slot_w, slot_h)))
+
+	# ----- 分隔线 -----
+	var divider := ColorRect.new()
+	divider.color = Color(0.3, 0.3, 0.45, 0.6)
+	divider.position = Vector2(16, slot_y + slot_h + 6)
+	divider.size = Vector2(588, 1)
+	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(divider)
+
+	# ----- 下方：全部武器列表（12 把）-----
 	var card_w: float = 186.0
-	var card_h: float = 56.0
+	var card_h: float = 48.0
 	var gap_x: float = 8.0
-	var gap_y: float = 8.0
+	var gap_y: float = 6.0
 	var start_x: float = 16.0
-	var start_y: float = 44.0
+	var start_y: float = slot_y + slot_h + 16.0
 
 	var index: int = 0
 	for weapon_id: Variant in WeaponDB.ids():
@@ -228,7 +251,52 @@ func _build_armory() -> void:
 	back.pressed.connect(_on_armory_back)
 
 
-## 单张武器卡片：图标 + 名称（稀有度色）+ 伤害/耗能 + 价格（或"已装备"），点击购买/换装
+## 单个开局槽位卡片（上方 3 个），可点击选中
+func _armory_kit_slot(parent: Control, index: int, pos: Vector2, card_size: Vector2) -> Dictionary:
+	var weapon_id: String = GameState.starter_kit_ids[index] if index < GameState.starter_kit_ids.size() else WeaponDB.STARTER_ID
+	var weapon: WeaponData = WeaponDB.create(weapon_id)
+	if weapon == null:
+		weapon = WeaponDB.create(WeaponDB.STARTER_ID)
+
+	var card := Control.new()
+	card.position = pos
+	card.size = card_size
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(card)
+
+	var bg := _nine_patch("panel_9.png", Vector2.ZERO, card_size, 4, card)
+	# 默认边框较暗，选中后高亮
+	bg.modulate = Color(0.7, 0.7, 0.85, 1.0)
+
+	var icon := TextureRect.new()
+	icon.texture = weapon.icon_texture()
+	icon.position = Vector2(6, 6)
+	icon.size = Vector2(18, 18)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(icon)
+
+	var rarity_color: Color = _rarity_color(int(weapon.rarity))
+	var name_label := _label(weapon.display_name, Vector2(30, 4), Vector2(148, 13), 10,
+			rarity_color, card, HORIZONTAL_ALIGNMENT_LEFT)
+	var stat_label := _label("伤害 %d · 耗能 %d" % [int(weapon.damage), int(weapon.energy_cost)],
+			Vector2(30, 19), Vector2(148, 11), 8, COLOR_DIM, card, HORIZONTAL_ALIGNMENT_LEFT)
+	var slot_label := _label("槽位 %d" % (index + 1), Vector2(30, 33), Vector2(148, 11), 8,
+			Color(0.68, 0.86, 1.0, 1.0), card, HORIZONTAL_ALIGNMENT_LEFT)
+
+	var click := Button.new()
+	click.text = ""
+	click.position = Vector2.ZERO
+	click.size = card_size
+	click.flat = true
+	click.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.add_child(click)
+	click.pressed.connect(_on_armory_slot_pressed.bind(index))
+
+	return {"index": index, "weapon_id": weapon_id, "card": card, "bg": bg,
+			"icon": icon, "name_label": name_label, "stat_label": stat_label, "slot_label": slot_label}
+
+
+## 单张武器卡片（下方列表）：图标 + 名称（稀有度色）+ 伤害/耗能 + 价格，点击购买并替换已选槽位
 func _armory_card(parent: Control, weapon_id: String, pos: Vector2, card_size: Vector2) -> Dictionary:
 	var weapon: WeaponData = WeaponDB.create(weapon_id)
 	if weapon == null:
@@ -244,16 +312,16 @@ func _armory_card(parent: Control, weapon_id: String, pos: Vector2, card_size: V
 	var icon := TextureRect.new()
 	icon.texture = weapon.icon_texture()
 	icon.position = Vector2(6, 6)
-	icon.size = Vector2(20, 20)
+	icon.size = Vector2(18, 18)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(icon)
 
 	var rarity_color: Color = _rarity_color(int(weapon.rarity))
-	var name_label := _label(weapon.display_name, Vector2(34, 3), Vector2(146, 13), 10,
+	var name_label := _label(weapon.display_name, Vector2(30, 4), Vector2(148, 13), 10,
 			rarity_color, card, HORIZONTAL_ALIGNMENT_LEFT)
 	var stat_label := _label("伤害 %d · 耗能 %d" % [int(weapon.damage), int(weapon.energy_cost)],
-			Vector2(34, 18), Vector2(146, 11), 8, COLOR_DIM, card, HORIZONTAL_ALIGNMENT_LEFT)
-	var price_label := _label("", Vector2(34, 32), Vector2(146, 12), 9,
+			Vector2(30, 19), Vector2(148, 11), 8, COLOR_DIM, card, HORIZONTAL_ALIGNMENT_LEFT)
+	var price_label := _label("", Vector2(30, 33), Vector2(148, 11), 9,
 			Color(0.68, 0.86, 1.0, 1.0), card, HORIZONTAL_ALIGNMENT_LEFT)
 
 	var click := Button.new()
@@ -266,7 +334,8 @@ func _armory_card(parent: Control, weapon_id: String, pos: Vector2, card_size: V
 	click.pressed.connect(_on_armory_weapon_pressed.bind(weapon_id))
 
 	var price: int = int(WeaponDB.TABLE[weapon_id].get("price", 0))
-	if weapon_id == GameState.starter_weapon_id:
+	var in_kit: bool = GameState.starter_kit_ids.has(weapon_id)
+	if in_kit:
 		price_label.text = "已装备"
 		price_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.42, 1.0))
 	elif price == 0:
@@ -276,24 +345,48 @@ func _armory_card(parent: Control, weapon_id: String, pos: Vector2, card_size: V
 	return {"weapon_id": weapon_id, "card": card, "price_label": price_label}
 
 
-## 账户金币变化后刷新图鉴面板（主菜单打开时本金显示 + 卡片价格状态）
+## 刷新图鉴面板：钱包 + 槽位状态 + 卡片状态
 func _refresh_armory() -> void:
 	if _armory_root == null:
 		return
 	_armory_wallet_label.text = "账户金币：%d" % int(GameState.account_gold)
+
+	# 刷新上方 3 槽位
+	for i: int in range(_armory_kit_slots.size()):
+		var entry: Dictionary = _armory_kit_slots[i]
+		var weapon_id: String = GameState.starter_kit_ids[i] if i < GameState.starter_kit_ids.size() else WeaponDB.STARTER_ID
+		var weapon: WeaponData = WeaponDB.create(weapon_id)
+		if weapon == null:
+			weapon = WeaponDB.create(WeaponDB.STARTER_ID)
+		entry["weapon_id"] = weapon_id
+		entry["icon"].texture = weapon.icon_texture()
+		entry["name_label"].text = weapon.display_name
+		entry["name_label"].add_theme_color_override("font_color", _rarity_color(int(weapon.rarity)))
+		entry["stat_label"].text = "伤害 %d · 耗能 %d" % [int(weapon.damage), int(weapon.energy_cost)]
+		# 高亮选中槽位
+		if i == _selected_slot:
+			entry["bg"].modulate = Color(1.0, 0.92, 0.7, 1.0)
+		else:
+			entry["bg"].modulate = Color(0.7, 0.7, 0.85, 1.0)
+
+	# 刷新下方卡片价格状态
 	for entry: Dictionary in _armory_cards:
-		var weapon_id: String = str(entry.get("weapon_id", ""))
-		if weapon_id.is_empty():
+		var wid: String = str(entry.get("weapon_id", ""))
+		if wid.is_empty():
 			continue
 		var price_label: Label = entry.get("price_label")
 		if price_label == null:
 			continue
-		if weapon_id == GameState.starter_weapon_id:
+		var price: int = int(WeaponDB.TABLE[wid].get("price", 0))
+		var in_kit: bool = GameState.starter_kit_ids.has(wid)
+		if in_kit:
 			price_label.text = "已装备"
 			price_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.42, 1.0))
+		elif price == 0:
+			price_label.text = "免费"
+			price_label.add_theme_color_override("font_color", Color(0.68, 0.86, 1.0, 1.0))
 		else:
-			var price: int = int(WeaponDB.TABLE[weapon_id].get("price", 0))
-			price_label.text = "免费" if price == 0 else "价格 %d" % price
+			price_label.text = "价格 %d" % price
 			price_label.add_theme_color_override("font_color", Color(0.68, 0.86, 1.0, 1.0))
 
 
@@ -485,10 +578,11 @@ func _on_settings_back() -> void:
 
 func _on_armory_pressed() -> void:
 	AudioMgr.play_sfx("ui_click")
+	_selected_slot = -1
 	_refresh_armory()
 	_menu_root.visible = false
 	_armory_root.visible = true
-	_set_hint("点击武器可花费账户金币替换初始武器 · Esc 返回")
+	_set_hint("先点击上方槽位选中，再点击下方武器购买替换 · Esc 返回")
 
 
 func _on_armory_back() -> void:
@@ -501,13 +595,33 @@ func _on_armory_back() -> void:
 		_start_button.grab_focus()
 
 
+## 点击上方槽位：选中该槽位，高亮显示
+func _on_armory_slot_pressed(index: int) -> void:
+	AudioMgr.play_sfx("ui_click")
+	_selected_slot = index
+	_refresh_armory()
+	var weapon_id: String = GameState.starter_kit_ids[index] if index < GameState.starter_kit_ids.size() else WeaponDB.STARTER_ID
+	var weapon: WeaponData = WeaponDB.create(weapon_id)
+	var name: String = weapon.display_name if weapon != null else ""
+	_set_hint("已选槽位 %d：%s · 点击下方武器购买替换" % [index + 1, name])
+
+
+## 点击下方武器卡片：若已选槽位，则购买并替换该槽位
 func _on_armory_weapon_pressed(weapon_id: String) -> void:
-	if GameState.starter_weapon_id == weapon_id:
+	if _selected_slot < 0:
+		AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+		_set_hint("请先点击上方槽位选择要替换的武器")
 		return
-	if GameState.buy_starter_weapon(weapon_id):
+	var current_id: String = GameState.starter_kit_ids[_selected_slot] if _selected_slot < GameState.starter_kit_ids.size() else ""
+	if current_id == weapon_id:
+		_set_hint("该槽位已经是这把武器了")
+		return
+	if GameState.buy_kit_weapon(weapon_id, _selected_slot):
 		AudioMgr.play_sfx("ui_click")
 		_refresh_armory()
-		_set_hint("已装备：" + str(WeaponDB.create(weapon_id).display_name))
+		var weapon: WeaponData = WeaponDB.create(weapon_id)
+		var name: String = weapon.display_name if weapon != null else ""
+		_set_hint("槽位 %d 已替换为：%s" % [_selected_slot + 1, name])
 	else:
 		AudioMgr.play_sfx("ui_back", 0.0, -6.0)
 		_set_hint("账户金币不足，先打通最后一层攒钱吧")

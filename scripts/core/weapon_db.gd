@@ -165,18 +165,25 @@ static func core_three() -> Array:
 	return [create("pistol"), create("shotgun"), create("laser")]
 
 
-## 开局武器组：玩家在武器图鉴购买的初始武器 + 两把试验武器（不重复，保持 3 把开局）。
-## starter_id 为空或无效时退回默认手枪。
-static func starter_kit(starter_id: String = STARTER_ID) -> Array:
-	var starter: WeaponData = create(starter_id)
-	if starter == null:
-		starter = create(STARTER_ID)
-	var out: Array = [starter]
+## 开局武器组：按玩家图鉴设定的 3 把武器 id 生成实例列表。
+## 去重处理（同一 id 只保留一份），不足 3 把时从核心三把补全。
+static func starter_kit(kit_ids: Array[String]) -> Array:
+	var out: Array = []
+	var seen: Array[String] = []
+	for weapon_id: String in kit_ids:
+		if weapon_id.is_empty():
+			continue
+		var weapon: WeaponData = create(weapon_id)
+		if weapon != null and not seen.has(weapon_id):
+			out.append(weapon)
+			seen.append(weapon_id)
+	# 补全到 3 把（从核心三把按优先级）
 	for weapon: Variant in core_three():
 		if out.size() >= 3:
 			break
-		if str(weapon.id) != str(starter.id):
+		if not seen.has(str(weapon.id)):
 			out.append(create(str(weapon.id)))
+			seen.append(str(weapon.id))
 	return out
 
 

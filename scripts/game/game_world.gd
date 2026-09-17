@@ -198,7 +198,7 @@ func _spawn_player() -> void:
 		# 地牢模式：读档继续时沿用存档里的武器；新开一局（new_run 已清空）
 		# 发"武器图鉴初始武器 + 两把试验武器"，默认状况与原来的核心三把一致
 		if GameState.weapons.is_empty():
-			for weapon: Variant in WeaponDB.starter_kit(GameState.starter_weapon_id):
+			for weapon: Variant in WeaponDB.starter_kit(GameState.starter_kit_ids):
 				GameState.add_weapon(weapon)
 			GameState.weapon_index = 0
 	else:

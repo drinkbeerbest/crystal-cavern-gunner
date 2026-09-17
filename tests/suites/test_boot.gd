@@ -214,25 +214,28 @@ func _test_floors(t: Node) -> void:
 func _test_account(t: Node) -> void:
 	# 强制重置，避免上一运行残留值干扰
 	GameState.account_gold = GameState.ACCOUNT_GOLD_START
-	GameState.starter_weapon_id = WeaponDB.STARTER_ID
+	GameState.starter_kit_ids = ["pistol", "shotgun", "laser"]
 	GameState._save_meta()
-	t.eq(GameState.account_gold, GameState.ACCOUNT_GOLD_START, "初始账户金币 200")
+	t.eq(GameState.account_gold, GameState.ACCOUNT_GOLD_START, "初始账户金币 300")
 
-	# 免费换回手枪
-	GameState.buy_starter_weapon("pistol")
-	t.eq(GameState.starter_weapon_id, "pistol", "可免费换回手枪")
+	# 免费换回手枪到槽位 0
+	GameState.buy_kit_weapon("pistol", 0)
+	t.eq(GameState.starter_kit_ids[0], "pistol", "可免费换回手枪到槽位 0")
 
-	# 昂贵武器买不起
-	t.check(not GameState.buy_starter_weapon("sniper"), "账户金币不足时购买失败")
+	# 昂贵武器买不起（先把金币降到买不起狙击枪）
+	GameState.account_gold = 200
+	t.check(not GameState.buy_kit_weapon("sniper", 0), "账户金币不足时购买失败")
 
-	# 用足够的账户金币买一把传说武器
+	# 用足够的账户金币买一把传说武器到槽位 0
 	GameState.account_gold = 300
-	t.check(GameState.buy_starter_weapon("sniper"), "账户金币足够时购买成功")
-	t.eq(GameState.starter_weapon_id, "sniper", "购买后初始武器为狙击枪")
+	t.check(GameState.buy_kit_weapon("sniper", 0), "账户金币足够时购买成功")
+	t.eq(GameState.starter_kit_ids[0], "sniper", "购买后槽位 0 为狙击枪")
 	t.eq(GameState.account_gold, 10, "购买后账户扣款 290")
 
 	# 未知武器 id 拒绝
-	t.check(not GameState.buy_starter_weapon("no_such_weapon"), "未知武器购买失败")
+	t.check(not GameState.buy_kit_weapon("no_such_weapon", 0), "未知武器购买失败")
+	t.check(not GameState.buy_kit_weapon("pistol", -1), "越界槽位购买失败")
+	t.check(not GameState.buy_kit_weapon("pistol", 3), "越界槽位购买失败")
 
 	# 完全通关：当局金币 1/3 转入账户
 	GameState.new_run(31337)
@@ -253,7 +256,7 @@ func _test_account(t: Node) -> void:
 
 	# 归位初始状态，避免影响后续套件 / 玩家存档
 	GameState.account_gold = GameState.ACCOUNT_GOLD_START
-	GameState.starter_weapon_id = WeaponDB.STARTER_ID
+	GameState.starter_kit_ids = ["pistol", "shotgun", "laser"]
 	GameState._save_meta()
 
 
