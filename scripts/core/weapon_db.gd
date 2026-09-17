@@ -84,7 +84,7 @@ const TABLE: Dictionary = {
 	"gatling": {
 		"display_name": "晶能加特林", "kind": K.PROJECTILE, "rarity": R.LEGENDARY, "price": 220,
 		"damage": 10, "fire_rate": 12.0, "bullet_speed": 520.0, "spread_deg": 10.0,
-		"pellets": 1, "energy_cost": 3, "crit_bonus": 0.02, "knockback": 30.0,
+		"pellets": 1, "energy_cost": 2, "crit_bonus": 0.02, "knockback": 30.0,
 		"pierce": 0, "bullet_lifetime": 0.9, "auto_fire": true, "recoil": 14.0, "shake": 1.0,
 		"sfx": "shoot_smg", "projectile_frames": ["bullet_p_0", "bullet_p_1"],
 		"description": "极致射速的转管机枪，贴脸消灭一切目标。",

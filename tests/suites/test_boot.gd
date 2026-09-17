@@ -212,7 +212,10 @@ func _test_floors(t: Node) -> void:
 # ---------- 账户金币 / 武器图鉴 ----------
 
 func _test_account(t: Node) -> void:
-	# 初始账户金币 200
+	# 强制重置，避免上一运行残留值干扰
+	GameState.account_gold = GameState.ACCOUNT_GOLD_START
+	GameState.starter_weapon_id = WeaponDB.STARTER_ID
+	GameState._save_meta()
 	t.eq(GameState.account_gold, GameState.ACCOUNT_GOLD_START, "初始账户金币 200")
 
 	# 免费换回手枪
