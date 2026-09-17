@@ -178,6 +178,12 @@ func _hit_target(target: Node, hit_position: Vector2) -> void:
 	_spawn_hit_fx(hit_position)
 	AudioMgr.play_sfx("hit_crit" if is_crit else "hit_flesh", 0.05)
 
+	# Explosive projectile: detonate on enemy hit
+	if explode_radius > 0.0:
+		_explode(hit_position)
+		_destroy()
+		return
+
 	if pierce_left > 0:
 		pierce_left -= 1
 		return

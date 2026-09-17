@@ -107,7 +107,7 @@ const TABLE: Dictionary = {
 	},
 	"grenade_launcher": {
 		"display_name": "崩裂爆弹枪", "kind": K.EXPLOSIVE, "rarity": R.RARE, "price": 210,
-		"damage": 42, "fire_rate": 1.3, "bullet_speed": 240.0, "spread_deg": 3.0,
+		"damage": 53, "fire_rate": 1.3, "bullet_speed": 240.0, "spread_deg": 3.0,
 		"pellets": 1, "energy_cost": 14, "crit_bonus": 0.04, "knockback": 200.0,
 		"pierce": 0, "bullet_lifetime": 1.8, "auto_fire": false, "recoil": 110.0, "shake": 3.5,
 		"explosion_radius": 55.0,
