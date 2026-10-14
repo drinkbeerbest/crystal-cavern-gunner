@@ -39,6 +39,8 @@ var aim_direction: Vector2 = Vector2.RIGHT
 ## 子弹/特效挂载层（由 GameWorld 注入；缺省用父节点）
 var bullet_layer: Node2D = null
 var fx_layer: Node2D = null
+## 实体层（由 GameWorld 注入）：哨戒炮台需要参与 Y 排序，必须挂这一层
+var entity_root: Node2D = null
 
 ## 炸弹投掷的活动范围（世界层按当前房间的 interior_rect 注入，撞墙即落地）
 var throw_bounds: Rect2 = Rect2()
@@ -335,7 +337,7 @@ func try_fire() -> bool:
 	if fire_cooldown > 0.0:
 		last_fire_blocked_reason = "cooldown"
 		return false
-	var cost: float = weapon.energy_cost
+	var cost: float = weapon.energy_cost * maxf(_stat("energy_cost_multiplier"), 0.05)
 	if cost > 0.0 and float(stats.get("energy", 0.0)) < cost:
 		last_fire_blocked_reason = "energy"
 		AudioMgr.play_sfx("empty", 0.03)
@@ -409,6 +411,24 @@ func _spawn_bullet(weapon: WeaponData, damage: float, is_crit: bool, origin: Vec
 	if weapon.kind == WeaponData.Kind.HOMING:
 		bullet.homing = weapon.homing_strength
 	bullet.position = origin
+	# ---- 机制型弹道的初始化 ----
+	match weapon.kind:
+		WeaponData.Kind.BOOMERANG:
+			# 记录出发点，返程的终点就是这里
+			bullet.origin_point = origin
+			# 返程再次命中：清空已命中表，让它能再切一次同一批目标
+			bullet.life = maxf(weapon.bullet_lifetime, 0.4)
+		WeaponData.Kind.RICOCHET:
+			bullet.ricochet_left = weapon.ricochet_times
+			bullet.life = maxf(weapon.bullet_lifetime, 0.4)
+		WeaponData.Kind.MINE:
+			# 布雷的飞行时长与待发时长是两段，必须分别记录；
+			# 初始 `life` 先给足（飞行 + 待发），落地时 Bullet 会再顶长一次
+			bullet.mine_flight_time = maxf(weapon.bullet_lifetime, 0.05)
+			bullet.mine_lifetime = maxf(weapon.mine_lifetime, 0.5)
+			bullet.life = bullet.mine_flight_time + bullet.mine_lifetime
+		_:
+			pass
 	_bullet_host().add_child(bullet)
 	if bullet.global_position != origin:
 		bullet.global_position = origin
@@ -504,31 +524,140 @@ func dash_ready() -> bool:
 func try_skill() -> bool:
 	if dead or skill_cooldown_timer > 0.0:
 		return false
-	if float(stats.get("energy", 0.0)) < G.SKILL_ENERGY_COST:
+	var skill_id: String = GameState.current_skill()
+	var cost: float = SkillDB.energy_cost_of(skill_id)
+	if float(stats.get("energy", 0.0)) < cost:
 		AudioMgr.play_sfx("empty", 0.03)
 		EventBus.ammo_or_energy_lacking.emit()
 		skill_cooldown_timer = 0.4
 		return false
-	spend_energy(G.SKILL_ENERGY_COST)
-	skill_cooldown_timer = _stat("skill_cooldown")
+	spend_energy(cost)
+	skill_cooldown_timer = SkillDB.cooldown_of(skill_id) \
+			* maxf(_stat("skill_cooldown_multiplier"), 0.2)
 	skills_used += 1
+	EventBus.player_skill_used.emit(skill_id)
+	match SkillDB.kind_of(skill_id):
+		SkillDB.Kind.DASH_SLASH:
+			_cast_dash_slash(skill_id)
+		SkillDB.Kind.BARRAGE:
+			_cast_barrage(skill_id)
+		SkillDB.Kind.TURRET:
+			_deploy_turret(skill_id)
+		_:
+			_cast_shockwave(skill_id)
+	return true
 
-	var damage: float = G.SKILL_DAMAGE * _stat("damage_multiplier")
+
+## 晶能冲击波（工程机以外角色的默认技能；以自身为中心炸开一圈）
+func _cast_shockwave(skill_id: String) -> void:
+	var damage: float = SkillDB.value(skill_id, "damage", G.SKILL_DAMAGE) * _stat("damage_multiplier")
+	var radius: float = SkillDB.value(skill_id, "radius", G.SKILL_RADIUS)
 	var is_crit: bool = CombatUtil.roll_crit(_rng(), _stat("crit_chance"))
 	if is_crit:
 		damage *= _stat("crit_multiplier")
-	var damaged: Array = CombatUtil.area_damage(self, global_position, G.SKILL_RADIUS, damage, is_crit,
-			G.SKILL_KNOCKBACK, get_instance_id(), G.LAYER_ENEMY, [self])
+	var damaged: Array = CombatUtil.area_damage(self, global_position, radius, damage, is_crit,
+			SkillDB.value(skill_id, "knockback", G.SKILL_KNOCKBACK), get_instance_id(),
+			G.LAYER_ENEMY, [self])
 	last_shot_damage = damage
 	last_shot_crit = is_crit
 	last_shot_pellets = damaged.size()
-
 	AudioMgr.play_sfx("skill", 0.05)
 	Fx.play(_fx_host(), "ring", global_position, {"fps": 20.0, "scale": 2.6, "z_index": 11})
 	Fx.play(_fx_host(), "level_ring", global_position, {"fps": 18.0, "scale": 1.5, "z_index": 11})
 	EventBus.request_screen_shake.emit(3.2, 0.22)
-	EventBus.player_skill_used.emit(G.SKILL_ID)
-	return true
+
+
+## 突进斩（晶刃武士）：朝瞄准方向瞬移一段距离，沿途切开经过的敌人。
+## 位移期间无敌——所以它同时是「输出技能」和「逃生技能」，但代价是必须贴脸。
+func _cast_dash_slash(skill_id: String) -> void:
+	var damage: float = SkillDB.value(skill_id, "damage", 52.0) * _stat("damage_multiplier")
+	var reach: float = SkillDB.value(skill_id, "radius", 52.0)
+	var distance: float = SkillDB.DASH_SLASH_DISTANCE
+	var is_crit: bool = CombatUtil.roll_crit(_rng(), _stat("crit_chance"))
+	if is_crit:
+		damage *= _stat("crit_multiplier")
+
+	var start: Vector2 = global_position
+	var end: Vector2 = start + aim_direction * distance
+	# 沿途逐段判定：一次性 area 会在位移前就结算，
+	# 而这里要的是"扫过谁谁挨刀"的连续手感
+	var cuts: int = 0
+	var steps: int = 8
+	for i: int in range(1, steps + 1):
+		var at: Vector2 = start.lerp(end, float(i) / float(steps))
+		var hit_list: Array = CombatUtil.area_damage(self, at, reach, damage, is_crit,
+				SkillDB.value(skill_id, "knockback", 260.0), get_instance_id(),
+				G.LAYER_ENEMY, [self])
+		cuts += hit_list.size()
+		Fx.play(_fx_host(), "slash", at, {
+			"fps": 30.0, "angle": aim_direction.angle(), "scale": 1.3, "z_index": 11,
+		})
+	global_position = end
+	velocity = aim_direction * 60.0
+	set_invulnerable(SkillDB.DASH_SLASH_IFRAMES)
+	last_shot_damage = damage
+	last_shot_crit = is_crit
+	last_shot_pellets = cuts
+	AudioMgr.play_sfx("swing_blade", 0.05)
+	AudioMgr.play_sfx("skill", 0.03)
+	EventBus.request_screen_shake.emit(2.6, 0.16)
+	EventBus.player_dashed.emit()
+
+
+## 八方箭雨（游晶游侠）：原地向八个方向各射一枚追踪晶弹。
+## 冷却最长、伤害单发最低，但它是**唯一能在被围住时脱身的技能**。
+func _cast_barrage(skill_id: String) -> void:
+	var damage: float = SkillDB.value(skill_id, "damage", 26.0) * _stat("damage_multiplier")
+	var count: int = int(SkillDB.value(skill_id, "count", 8.0))
+	var speed: float = 330.0
+	var is_crit: bool = CombatUtil.roll_crit(_rng(), _stat("crit_chance"))
+	if is_crit:
+		damage *= _stat("crit_multiplier")
+	for i: int in range(count):
+		var angle: float = TAU * float(i) / float(maxi(count, 1))
+		var dir: Vector2 = Vector2.from_angle(angle)
+		var bullet := Bullet.new()
+		bullet.from_player = true
+		bullet.source = self
+		bullet.fx_layer = fx_layer
+		bullet.fly_velocity = dir * speed
+		bullet.damage = damage
+		bullet.is_crit = is_crit
+		bullet.life = 1.4
+		bullet.radius = 4.0
+		bullet.homing = 5.0
+		bullet.trail_enabled = true
+		bullet.flicker_fps = 16.0
+		bullet.position = global_position + dir * 10.0 + Vector2(0, -2)
+		_bullet_host().add_child(bullet)
+	Fx.play(_fx_host(), "ring", global_position, {"fps": 24.0, "scale": 1.8, "z_index": 11})
+	AudioMgr.play_sfx("shoot_wand", 0.04)
+	AudioMgr.play_sfx("skill", 0.04)
+	EventBus.request_screen_shake.emit(2.2, 0.14)
+	last_shot_damage = damage
+	last_shot_crit = is_crit
+	last_shot_pellets = count
+
+
+## 哨戒炮台（哨戒工程机）：在脚下丢下一座自动锁定开火的炮台。
+## 冷却极长，但一旦布好就是持续输出——奖励「提前占位」的玩法。
+func _deploy_turret(skill_id: String) -> void:
+	var turret := Turret.new()
+	turret.damage = SkillDB.value(skill_id, "damage", 13.0) * _stat("damage_multiplier")
+	turret.fire_interval = maxf(SkillDB.value(skill_id, "fire_interval", 0.22), 0.05)
+	turret.life = maxf(SkillDB.value(skill_id, "duration", 9.0), 0.5)
+	turret.seek_radius = maxf(SkillDB.value(skill_id, "radius", 260.0), 40.0)
+	turret.bullet_speed = SkillDB.value(skill_id, "bullet_speed", 420.0)
+	turret.bullet_layer = bullet_layer
+	turret.fx_layer = fx_layer
+	turret.owner_id = get_instance_id()
+	# 炮台要参与 Y 排序才能被墙体正确遮挡，所以挂在实体层（玩家的父节点）而不是特效层
+	var host: Node2D = entity_root if entity_root != null else _bomb_host()
+	host.add_child(turret)
+	turret.position = global_position + Vector2(0, 4)
+	AudioMgr.play_sfx("altar", 0.0, -6.0)
+	Fx.play(_fx_host(), "level_ring", global_position, {"fps": 16.0, "scale": 0.9, "z_index": 12})
+	EventBus.request_screen_shake.emit(1.6, 0.12)
 
 
 func skill_ready() -> bool:

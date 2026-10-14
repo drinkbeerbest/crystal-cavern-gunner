@@ -19,7 +19,9 @@ const START_ROOM_SIZE: Vector2i = Vector2i(19, 13)
 # ---------- 地牢 ----------
 const MIN_ROOMS_PER_FLOOR: int = 5
 const MAX_ROOMS_PER_FLOOR: int = 10
-const TOTAL_FLOORS: int = 4
+## 总层数：4 层对 12 把武器 + 3 个 Boss 来说太短——
+## 每 2 层换一批敌人权重、每 2~3 层换一个 Boss，一局才撑得起「构筑成型」的过程。
+const TOTAL_FLOORS: int = 8
 
 # ---------- 物理层（位掩码，必须是 2 的幂） ----------
 const LAYER_WORLD: int = 1
@@ -54,6 +56,12 @@ const DEFAULT_PLAYER_STATS: Dictionary = {
 	"dash_duration": 0.16,
 	"dash_cooldown": 0.85,
 	"skill_cooldown": 4.8,
+	## 技能冷却 / 耗能的总倍率。刻意给 1.0 基准而不是 0.0：
+	## 永久天赋树用 -0.12 表示"冷却减少 12%"，0 基准会让未加点时冷却变成 1/5。
+	"skill_cooldown_multiplier": 1.0,
+	"energy_cost_multiplier": 1.0,
+	"gold_start": 0.0,              # 永久天赋：起始金币加成
+	"start_bombs": 0.0,             # 永久天赋：开局额外炸弹
 	"crit_chance": 0.10,
 	"crit_multiplier": 1.8,
 	"damage_multiplier": 1.0,
@@ -117,13 +125,22 @@ const WAVE_COUNT_PER_FLOOR: int = 1
 ## 单房间敌人数量上限（避免小房间挤爆）
 const WAVE_MAX_COUNT: int = 12
 ## 每层把普通怪替换成精英怪的概率（键为层数，超出取最后一档）
-const WAVE_ELITE_CHANCE: Dictionary = {1: 0.0, 2: 0.14, 3: 0.26, 4: 0.4}
-## 每层的类型权重（键为层数）：近战 / 远程 / 自爆 / 掠晶猎犬
+const WAVE_ELITE_CHANCE: Dictionary = {
+	1: 0.0, 2: 0.14, 3: 0.24, 4: 0.32, 5: 0.38, 6: 0.44, 7: 0.5, 8: 0.56,
+}
+## 每层的类型权重（键为层数）。四种新原型按层数逐个登场，
+## 保证玩家在第 3 层之前不会一次撞上四种全新机制：
+##   1-2 基础三件套 + 猎犬   3 影袭者   4 穿地兽
+##   5 裂晶虫（带碎片）      6 晶巢母体   7-8 五种全开、权重向新怪倾斜
 const WAVE_TYPE_WEIGHTS: Dictionary = {
-	1: {"husk": 50.0, "hexeye": 32.0, "bloom": 18.0},
-	2: {"husk": 38.0, "hexeye": 34.0, "bloom": 28.0},
-	3: {"husk": 30.0, "hexeye": 30.0, "bloom": 26.0, "reaver_hound": 14.0},
-	4: {"husk": 18.0, "hexeye": 24.0, "bloom": 22.0, "reaver_hound": 36.0},
+	1: {"husk": 52.0, "hexeye": 34.0, "bloom": 18.0},
+	2: {"husk": 40.0, "hexeye": 36.0, "bloom": 28.0},
+	3: {"husk": 28.0, "hexeye": 30.0, "bloom": 22.0, "reaver_hound": 16.0, "shadewalker": 12.0},
+	4: {"husk": 24.0, "hexeye": 26.0, "bloom": 18.0, "reaver_hound": 16.0, "shadewalker": 14.0, "burrower": 12.0},
+	5: {"husk": 20.0, "hexeye": 24.0, "bloom": 14.0, "reaver_hound": 16.0, "shadewalker": 14.0, "burrower": 12.0, "crystal_grub": 14.0},
+	6: {"husk": 18.0, "hexeye": 20.0, "bloom": 12.0, "reaver_hound": 15.0, "shadewalker": 14.0, "burrower": 12.0, "crystal_grub": 13.0, "brood_mother": 8.0},
+	7: {"husk": 16.0, "hexeye": 18.0, "bloom": 10.0, "reaver_hound": 15.0, "shadewalker": 15.0, "burrower": 13.0, "crystal_grub": 13.0, "brood_mother": 8.0},
+	8: {"husk": 14.0, "hexeye": 16.0, "bloom": 10.0, "reaver_hound": 15.0, "shadewalker": 16.0, "burrower": 14.0, "crystal_grub": 13.0, "brood_mother": 9.0},
 }
 ## 一波拆成几批投放，以及批次之间的间隔（秒）
 const WAVE_BATCHES: int = 2

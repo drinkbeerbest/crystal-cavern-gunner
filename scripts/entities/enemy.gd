@@ -39,6 +39,8 @@ var target: Node2D = null
 ## 由世界/生成器注入（敌人子弹与特效必须挂在常驻层上）
 var bullet_layer: Node2D = null
 var fx_layer: Node2D = null
+## 由世界层注入：Boss 技能地面预警贴花层（地板之上、角色之下）
+var decal_layer: Node2D = null
 ## 由世界层注入（Boss 召唤小怪等需要反向 spawn 的入口）
 var world_node: Node2D = null
 ## 死亡动画结束后是否自动释放（测试里设 false，便于断言死亡后的状态）
@@ -51,6 +53,8 @@ var contact_cooldown_timer: float = 0.0
 var stun_timer: float = 0.0
 var hit_flash_timer: float = 0.0
 var death_timer: float = -1.0
+## 有限寿命（秒）：召唤物用，到点自毁。-1 = 永生（普通怪）
+var life_timer: float = -1.0
 var anim_time: float = 0.0
 var state_time: float = 0.0
 
@@ -88,6 +92,9 @@ var _frame_index: int = 0
 var _rng := RandomNumberGenerator.new()
 var _wander_timer: float = 0.0
 var _wander_direction: Vector2 = Vector2.ZERO
+## 减速：系数与剩余时间（由寒晶系列子弹施加）
+var slow_factor: float = 1.0
+var slow_timer: float = 0.0
 
 static var _enemy_bullet_textures: Array[Texture2D] = []
 
@@ -179,6 +186,8 @@ func _physics_process(delta: float) -> void:
 			activate()
 		return
 
+	_tick_life(delta)
+
 	if stun_timer > 0.0:
 		move_velocity = Vector2.ZERO
 		if state != State.STUNNED:
@@ -193,6 +202,16 @@ func _physics_process(delta: float) -> void:
 	_post_move(delta)
 	_tick_contact_damage()
 	_update_animation(delta)
+
+
+## 有限寿命：召唤物到点自毁（life_timer <= 0 的普通怪不受影响）
+func _tick_life(delta: float) -> void:
+	if life_timer <= 0.0:
+		return
+	life_timer -= delta
+	if life_timer <= 0.0:
+		# 到期：走正常死亡链（掉落 / 事件都会照常结算），不静默消失
+		die()
 
 
 ## 子类 AI：读 `target`，写 `move_velocity` / 状态 / 计时器
@@ -210,7 +229,8 @@ func _think(_delta: float) -> void:
 ## 位移执行：期望速度 + 分离力 + 击退冲量
 func _apply_movement(delta: float) -> void:
 	separation_force = _compute_separation()
-	velocity = move_velocity + separation_force + external_velocity
+	# 减速作用于敌人自己写下的 move_velocity（子类决定往哪走，基类只管多快）
+	velocity = move_velocity * speed_factor() + separation_force + external_velocity
 	last_collided_wall = false
 	move_and_slide()
 	last_collided_wall = is_on_wall()
@@ -250,6 +270,10 @@ func _tick_timers(delta: float) -> void:
 	stun_timer = maxf(stun_timer - delta, 0.0)
 	if hit_flash_timer > 0.0:
 		hit_flash_timer = maxf(hit_flash_timer - delta, 0.0)
+	if slow_timer > 0.0:
+		slow_timer = maxf(slow_timer - delta, 0.0)
+		if slow_timer <= 0.0:
+			slow_factor = 1.0
 		_apply_flash()
 
 
@@ -530,6 +554,20 @@ func heal(amount: float) -> void:
 		return
 	health = minf(health + amount, max_health)
 	queue_redraw()
+
+
+## 减速（寒晶系列子弹）。同一目标被反复命中时**刷新时长而不是叠乘**，
+## 否则加特林配减速枪会直接把敌人钉成 0 速度。
+func apply_slow(factor: float, duration: float) -> void:
+	if dead or duration <= 0.0:
+		return
+	slow_factor = clampf(minf(slow_factor, factor), 0.05, 1.0)
+	slow_timer = maxf(slow_timer, duration)
+
+
+## 减速生效中（子类取速度时乘这个系数）
+func speed_factor() -> float:
+	return slow_factor if slow_timer > 0.0 else 1.0
 
 
 ## 头顶血条（只在掉血后绘制，满血不打扰画面）

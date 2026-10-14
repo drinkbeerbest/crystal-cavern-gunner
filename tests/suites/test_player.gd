@@ -20,7 +20,7 @@ func suite_name() -> String:
 
 
 func run(t: Node) -> void:
-	_test_weapon_table(t)
+	await _test_weapon_table(t)
 	await _test_world_assembly(t)
 	await _test_attributes_and_movement(t)
 	await _test_projectile_hit(t)
@@ -29,6 +29,9 @@ func run(t: Node) -> void:
 	await _test_dash(t)
 	await _test_skill_area_damage(t)
 	await _test_hurt_death_and_result(t)
+	# 放最后：它会自建一个世界并往弹道层塞一颗布雷，
+	# 插在中间会污染后面几个用例共享的 GameState / 世界状态
+	await _test_mine_lifetime(t)
 
 
 # ==================== 1. 武器数据 ====================
@@ -77,6 +80,93 @@ func _test_weapon_table(t: Node) -> void:
 	for weapon: Variant in WeaponDB.core_three():
 		ids.append((weapon as WeaponData).id)
 	t.eq(ids, ["pistol", "shotgun", "laser"], "初始三把武器顺序为 手枪/霰弹枪/激光枪")
+
+	_test_mechanical_weapons(t)
+
+
+## M9 机制型武器：它们的卖点是**弹道行为**，所以这里锁的是行为参数与"确实不是普通弹"
+func _test_mechanical_weapons(t: Node) -> void:
+	var boomerang: WeaponData = WeaponDB.create("boomerang")
+	var coil: WeaponData = WeaponDB.create("arc_coil")
+	var mine: WeaponData = WeaponDB.create("seed_mine")
+	var ricochet: WeaponData = WeaponDB.create("ricochet_core")
+	var frost: WeaponData = WeaponDB.create("cryo_pistol")
+
+	t.eq(boomerang.kind, WeaponData.Kind.BOOMERANG, "回旋晶刃是 BOOMERANG 弹道")
+	t.eq(coil.kind, WeaponData.Kind.CHAIN, "链式电弧是 CHAIN 弹道")
+	t.eq(mine.kind, WeaponData.Kind.MINE, "晶籽布雷是 MINE 弹道")
+	t.eq(ricochet.kind, WeaponData.Kind.RICOCHET, "跳弹核是 RICOCHET 弹道")
+	t.eq(frost.kind, WeaponData.Kind.FROST, "寒晶手枪是 FROST 弹道")
+
+	# 关键：五种新武器都不是「普通弹改数值」
+	for weapon: Variant in [boomerang, coil, mine, ricochet, frost]:
+		t.check((weapon as WeaponData).kind != WeaponData.Kind.PROJECTILE,
+				"%s 不是普通直射弹" % (weapon as WeaponData).display_name)
+
+	# 行为参数必须有效，否则机制会退化成"看起来特殊其实没效果"
+	t.gt(boomerang.return_speed, 0.0, "回旋镖有返程速度配置")
+	t.gt(coil.chain_targets, 1.0, "链式电弧至少跳 2 个目标")
+	t.gt(coil.chain_range, 0.0, "链式电弧有跳跃距离")
+	t.lt(coil.chain_falloff, 1.0, "链式电弧每跳衰减")
+	t.gt(mine.mine_lifetime, 1.0, "布雷存在足够久（能被踩到）")
+	t.gt(mine.mine_explosion_radius, 0.0, "布雷有爆炸半径")
+	t.gt(ricochet.ricochet_times, 1.0, "跳弹核至少弹一次")
+	t.lt(frost.slow_factor, 1.0, "寒晶手枪确实减速")
+	t.gt(frost.slow_duration, 0.0, "减速有持续时间")
+
+	# 数量扩充：12 把 → 19 把
+	t.gte(WeaponDB.ids().size(), 19, "武器总数扩充到 19 把以上")
+
+
+## 布雷的回归测试：它的生命周期横跨「飞行 + 待发」两段，很容易被全局过期检查砍掉。
+## 当年就因为 `life` 只等于飞行时长，导致雷布设后 0.5 秒就消失、退化成一次性手雷。
+func _test_mine_lifetime(t: Node) -> void:
+	var world: GameWorld = _make_world(t)
+	world.auto_demo_wave = false
+	await t.get_tree().process_frame
+	var player: Player = world.player
+	if player == null:
+		await _free_world(t, world)
+		return
+	player.set_aim_direction(Vector2.RIGHT)
+	player.clear_invulnerable()
+
+	var weapon: WeaponData = WeaponDB.create("seed_mine")
+	var mine := Bullet.new()
+	mine.data = weapon
+	mine.source = player
+	mine.from_player = true
+	mine.fx_layer = world.fx_root
+	mine.fly_velocity = Vector2.RIGHT * 260.0
+	mine.damage = weapon.damage
+	mine.mine_flight_time = maxf(weapon.bullet_lifetime, 0.05)
+	mine.mine_lifetime = maxf(weapon.mine_lifetime, 0.5)
+	mine.life = mine.mine_flight_time + mine.mine_lifetime
+	mine.position = player.global_position
+	world.bullet_root.add_child(mine)
+
+	# 飞行段走完后应自动布设（不依赖撞墙）
+	for i: int in range(40):
+		await t.get_tree().physics_frame
+	t.check(is_instance_valid(mine), "飞行结束后布雷仍在场（没有被全局过期检查清掉）")
+	if not is_instance_valid(mine):
+		await _free_world(t, world)
+		return
+	t.check(mine.mine_armed, "布雷自动落地布设")
+	t.gt(mine.life, mine.mine_lifetime - 0.6,
+			"落地后总寿命已顶长到待发时长（否则雷会秒消失）")
+	t.near(mine.fly_velocity.length(), 0.0, 0.001, "布设后停止移动")
+
+	# 再等一会儿，它应该还活着（待发期远长于飞行期）
+	var age_before: float = mine.mine_lifetime
+	for i: int in range(20):
+		await t.get_tree().physics_frame
+	t.check(is_instance_valid(mine), "待发期内布雷持续存在（这次是真正的布雷）")
+	if is_instance_valid(mine):
+		t.lt(mine.mine_lifetime, age_before, "待发倒计时在推进")
+		mine.queue_free()
+
+	await _free_world(t, world)
 
 
 # ==================== 2. 世界装配 ====================
@@ -147,14 +237,20 @@ func _test_attributes_and_movement(t: Node) -> void:
 
 	# 属性单一事实来源：玩家 stats 与 GameState.stats 是同一份字典
 	t.eq(player.stats, GameState.stats, "玩家属性直接引用 GameState.stats")
-	t.eq(player.max_health(), 100.0, "生命上限 100")
-	t.eq(player.health(), 100.0, "初始生命满值")
-	t.eq(player.max_shield(), 50.0, "护盾上限 50")
-	t.eq(player.shield(), 50.0, "初始护盾满值")
+	# M9：默认角色是「晶刃武士」，下面断言的是**该角色**的属性，而不是裸默认值；
+	# 裸默认值仍然单独校验（它是所有角色属性的基准，不能被角色表改坏）
+	t.eq(GameState.character_id, CharacterDB.STARTER_ID, "默认角色为初始解锁角色")
+	t.eq(float(G.DEFAULT_PLAYER_STATS["max_health"]), 100.0, "基准生命上限仍为 100")
+	t.eq(float(G.DEFAULT_PLAYER_STATS["move_speed"]), 205.0, "基准移速仍为 205")
+	t.eq(player.max_health(), 130.0, "晶刃武士生命上限 130")
+	t.eq(player.health(), 130.0, "初始生命满值")
+	t.eq(player.max_shield(), 60.0, "晶刃武士护盾上限 60")
+	t.eq(player.shield(), 60.0, "初始护盾满值")
 	t.eq(player.max_energy(), 100.0, "能量上限 100")
 	t.eq(player.energy(), 100.0, "初始能量满值")
-	t.eq(player.stat("move_speed"), 205.0, "移速 205 像素/秒")
-	t.eq(player.stat("crit_chance"), 0.1, "基础暴击率 10%")
+	t.eq(player.stat("move_speed"), 218.0, "晶刃武士移速 218 像素/秒")
+	t.eq(float(G.DEFAULT_PLAYER_STATS["crit_chance"]), 0.1, "基准暴击率 10%")
+	t.eq(player.stat("crit_chance"), 0.1, "晶刃武士沿用基准暴击率")
 	t.eq(player.stat("crit_multiplier"), 1.8, "暴击伤害 1.8 倍")
 	t.eq(GameState.gold, G.START_GOLD, "开局金币为 0")
 
@@ -318,7 +414,7 @@ func _test_dash(t: Node) -> void:
 	t.check(player.try_dash(), "冲刺触发成功")
 	t.eq(player.dashes_used, 1, "冲刺计数 +1")
 	t.check(player.invulnerable, "冲刺期间处于无敌帧")
-	t.near(player.dash_cooldown_timer, 0.85, 0.02, "冲刺冷却 0.85 秒")
+	t.near(player.dash_cooldown_timer, 0.72, 0.02, "晶刃武士冲刺冷却 0.72 秒")
 	t.check(not player.dash_ready(), "冷却中冲刺不可用")
 	t.check(not player.try_dash(), "冷却中无法再次冲刺")
 
@@ -350,13 +446,24 @@ func _test_skill_area_damage(t: Node) -> void:
 	player.clear_invulnerable()
 	player.skill_cooldown_timer = 0.0
 	player.stats["energy"] = 100.0
+	# 断言改成数据驱动：当前角色的技能决定扣多少能量 / 冷却多久，
+	# 而不是把某个角色的数值钉死在这里
+	var skill_id: String = GameState.current_skill()
+	var expect_cost: float = SkillDB.energy_cost_of(skill_id)
+	var expect_cd: float = SkillDB.cooldown_of(skill_id)
+	var before_energy: float = player.energy()
 	t.check(player.try_skill(), "技能释放成功")
 	t.eq(player.skills_used, 1, "技能计数 +1")
-	t.near(player.energy(), 80.0, 0.6, "技能扣除 20 点能量")
-	t.near(player.skill_cooldown_timer, 4.8, 0.05, "技能冷却 4.8 秒")
-	t.gte(dummy.hit_count, 1.0, "冲击波命中范围内的靶子")
-	t.gte(dummy.total_damage, 22.0, "冲击波伤害不低于 44*50%（边缘衰减下限）")
-	t.gt(dummy.last_knockback.length(), 0.0, "冲击波带击退")
+	t.near(before_energy - player.energy(), expect_cost, 0.6,
+			"技能扣除 %.0f 点能量（%s）" % [expect_cost, skill_id])
+	t.near(player.skill_cooldown_timer, expect_cd, 0.05,
+			"技能冷却 %.1f 秒（%s）" % [expect_cd, skill_id])
+	# 晶刃武士的技能是突进斩：位移 + 沿途切割，而不是原地冲击波
+	t.eq(SkillDB.kind_of(skill_id), SkillDB.Kind.DASH_SLASH, "晶刃武士技能为突进斩")
+	t.gte(dummy.hit_count, 1.0, "突进斩命中路径上的靶子")
+	t.gte(dummy.total_damage, 20.0, "突进斩造成了可观伤害")
+	t.gt(dummy.last_knockback.length(), 0.0, "突进斩带击退")
+	t.check(player.invulnerable, "突进斩位移期间无敌")
 
 	# 能量不足时技能被拒绝
 	player.stats["energy"] = 5.0

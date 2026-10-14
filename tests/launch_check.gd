@@ -12,6 +12,8 @@ extends Node
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
 const SHOT_PATH: String = "res://tools/_preview/launch_check.png"
 const START_KEYWORDS: Array = ["开始", "新游戏", "START", "Start"]
+## 「开始游戏」会先进「选择关卡」面板，自检需要再点一次第 1 层才能真正开新局
+const FLOOR_KEYWORDS: Array = ["第 1 层", "第1层"]
 ## 地牢段要用房型枚举与房间尺寸常量
 const G := preload("res://scripts/core/game_const.gd")
 
@@ -80,12 +82,26 @@ func _check_boot_into_menu() -> void:
 		return
 	print("        按钮文案: %s" % start_button.text)
 	start_button.pressed.emit()
+	for i: int in range(6):
+		await get_tree().physics_frame
+
+	# 主菜单的「开始游戏」现在先进入「选择关卡」面板（见 main_menu.gd 的 _on_start_pressed），
+	# 所以这里必须再点一次「第 1 层」才会真正开新局。
+	# 早期版本的自检假设一次点击就进战斗，于是永远停在关卡选择面板上失败。
+	var floor_button: Button = _find_button(menu, FLOOR_KEYWORDS)
+	_check(floor_button != null, "关卡选择面板出现「第 1 层」按钮")
+	if floor_button != null:
+		print("        按钮文案: %s" % floor_button.text)
+		floor_button.pressed.emit()
 	for i: int in range(12):
 		await get_tree().physics_frame
 
 	_world = _main.get("current_screen")
-	_check(_world != null, "点击开始后已切换到新界面")
+	_check(_world != null, "确认关卡后已切换到新界面")
 	if _world == null:
+		return
+	if not _world.has_method("alive_enemy_count"):
+		print("        仍停留在: %s" % str(_world.name))
 		return
 	print("        当前界面节点: %s" % str(_world.name))
 	_check(_world.has_method("alive_enemy_count"), "新界面是战斗世界 GameWorld")

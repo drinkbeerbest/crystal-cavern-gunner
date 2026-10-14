@@ -21,6 +21,10 @@ const MELEE_SCRIPT: GDScript = preload("res://scripts/entities/enemy_husk.gd")
 const RANGED_SCRIPT: GDScript = preload("res://scripts/entities/enemy_hexeye.gd")
 const BOMBER_SCRIPT: GDScript = preload("res://scripts/entities/enemy_bloom.gd")
 const BOSS_SCRIPT: GDScript = preload("res://scripts/entities/enemy_boss.gd")
+const STALKER_SCRIPT: GDScript = preload("res://scripts/entities/enemy_stalker.gd")
+const SPLITTER_SCRIPT: GDScript = preload("res://scripts/entities/enemy_splitter.gd")
+const BURROWER_SCRIPT: GDScript = preload("res://scripts/entities/enemy_burrower.gd")
+const SUMMONER_SCRIPT: GDScript = preload("res://scripts/entities/enemy_summoner.gd")
 
 ## 敌人数值表：id -> 参数（缺省字段由 EnemyData 默认值补齐）
 const TABLE: Dictionary = {
@@ -81,6 +85,72 @@ const TABLE: Dictionary = {
 		"sfx_attack": "boss_charge",
 		"description": "被晶噬感染的猎犬，比矿道行者更快更凶，短距连扑咬碎猎物。",
 	},
+	"shadewalker": {
+		"display_name": "影袭者", "archetype": A.STALKER, "tier": T.NORMAL,
+		# 血量刻意压到全场最低档：它的伤害来自「你看不见」而不是「它很硬」，
+		# 给它厚血等于让玩家在看不见目标的情况下慢慢磨，挫败感翻倍。
+		"max_health": 18.0, "armor": 0.0, "move_speed": 118.0, "body_radius": 7.0,
+		"knockback_resist": 0.0, "sight_range": 380.0, "score": 16,
+		"contact_damage": 4.0, "contact_cooldown": 0.9,
+		# 显形前摇 0.85s：足够玩家看到红光后转身跑掉
+		"strike_trigger_range": 104.0, "reveal_time": 0.85,
+		"strike_speed": 440.0, "strike_duration": 0.30,
+		"strike_damage": 17.0, "strike_knockback": 280.0,
+		"gold_min": 3, "gold_max": 7,
+		"drops": {"energy": 0.34, "health": 0.10, "shield_cell": 0.06, "weapon": 0.03, "talent": 0.03},
+		"sprite_base": "husk", "frame_count": 3, "anim_fps": 13.0,
+		"sfx_attack": "boss_charge", "sfx_fuse": "level_start",
+		"description": "半透明的潜行者。始终留有残影，贴近后显形突刺——但它很脆，见红光就撤。",
+	},
+	"crystal_grub": {
+		"display_name": "裂晶虫", "archetype": A.SPLITTER, "tier": T.NORMAL,
+		"max_health": 40.0, "armor": 0.0, "move_speed": 78.0, "body_radius": 10.0,
+		"knockback_resist": 0.2, "sight_range": 300.0, "score": 15,
+		"contact_damage": 6.0, "contact_cooldown": 0.8,
+		"split_into": "grub_shard", "shard_contact_damage": 4.0,
+		"gold_min": 3, "gold_max": 6,
+		"drops": {"energy": 0.3, "health": 0.14, "shield_cell": 0.06, "bomb": 0.06, "weapon": 0.02, "talent": 0.02},
+		"sprite_base": "bloom", "frame_count": 4, "anim_fps": 8.0,
+		"sfx_die": "break_crate",
+		"description": "缓慢滚动的晶囊。被击杀时会裂成两只高速碎片。",
+	},
+	"grub_shard": {
+		"display_name": "晶囊碎片", "archetype": A.MELEE, "tier": T.NORMAL,
+		"max_health": 14.0, "armor": 0.0, "move_speed": 128.0, "body_radius": 5.0,
+		"knockback_resist": 0.0, "sight_range": 340.0, "score": 3,
+		"contact_damage": 4.0, "contact_cooldown": 0.7,
+		"gold_min": 0, "gold_max": 1,
+		"drops": {"energy": 0.12},
+		"sprite_base": "hexeye", "frame_count": 4, "anim_fps": 14.0,
+		"description": "裂晶虫崩出的碎片。脆、快、不会再分裂。",
+	},
+	"burrower": {
+		"display_name": "穿地兽", "archetype": A.BURROWER, "tier": T.NORMAL,
+		"max_health": 44.0, "armor": 1.0, "move_speed": 104.0, "body_radius": 9.0,
+		"knockback_resist": 0.25, "sight_range": 420.0, "score": 20,
+		"contact_damage": 5.0, "contact_cooldown": 0.9,
+		"erupt_trigger_range": 130.0, "erupt_damage": 21.0, "erupt_knockback": 330.0,
+		"gold_min": 4, "gold_max": 8,
+		"drops": {"energy": 0.32, "health": 0.12, "shield_cell": 0.08, "bomb": 0.06, "weapon": 0.03, "talent": 0.02},
+		"sprite_base": "reaver_hound", "frame_count": 3, "anim_fps": 12.0,
+		"sfx_fuse": "boss_charge", "sfx_attack": "boss_slam",
+		"description": "潜行时可穿过墙体，贴近后在地面预警圈里破土砸下。",
+	},
+	"brood_mother": {
+		"display_name": "晶巢母体", "archetype": A.SUMMONER, "tier": T.NORMAL,
+		"max_health": 58.0, "armor": 1.0, "move_speed": 62.0, "body_radius": 11.0,
+		"knockback_resist": 0.4, "sight_range": 400.0, "score": 24,
+		"contact_damage": 5.0, "contact_cooldown": 1.0,
+		"preferred_range": 210.0, "keep_distance_min": 120.0,
+		"summon_ids": ["husk"], "summon_count": 2, "summon_cap": 4,
+		"summon_cooldown": 6.5, "summon_windup": 0.6,
+		"summon_ring": 52.0, "summon_life": 9.0, "summon_clear_delay": 4.0,
+		"gold_min": 5, "gold_max": 9,
+		"drops": {"energy": 0.4, "health": 0.16, "shield_cell": 0.08, "bomb": 0.1, "weapon": 0.04, "talent": 0.04},
+		"sprite_base": "bloom", "frame_count": 4, "anim_fps": 7.0,
+		"sfx_shoot": "boss_summon",
+		"description": "自身脆弱但不断产出小怪。召唤物有寿命，清空后它也要歇一阵。",
+	},
 	"warden": {
 		"display_name": "晶核监守者", "archetype": A.BOSS, "tier": T.NORMAL,
 		"max_health": 862.0, "armor": 3.0, "move_speed": 82.0, "body_radius": 17.0,
@@ -97,6 +167,7 @@ const TABLE: Dictionary = {
 		# ---------- 召唤 ----------
 		"summon_ids": ["husk"], "summon_count": 3, "summon_cap": 6,
 		"summon_cooldown": 10.0, "summon_windup": 0.8,
+		"summon_clear_delay": 6.5,
 		# ---------- 砸地 ----------
 		"slam_radius": 96.0, "slam_damage": 24.0, "slam_knockback": 280.0,
 		"slam_windup": 0.5, "slam_cooldown": 5.5, "slam_trigger_range": 120.0,
@@ -134,6 +205,7 @@ const TABLE: Dictionary = {
 		# ---------- 召唤 ----------
 		"summon_ids": ["hexeye"], "summon_count": 2, "summon_cap": 6,
 		"summon_cooldown": 12.0, "summon_windup": 0.7,
+		"summon_clear_delay": 8.0,
 		# ---------- 砸地（贴脸防身） ----------
 		"slam_radius": 88.0, "slam_damage": 20.0, "slam_knockback": 260.0,
 		"slam_windup": 0.45, "slam_cooldown": 6.0, "slam_trigger_range": 105.0,
@@ -151,6 +223,70 @@ const TABLE: Dictionary = {
 "sfx_attack": "boss_slam", "sfx_shoot": "boss_roar", "sfx_die": "boss_die", "sfx_hurt": "enemy_hurt",
 		"description": "用晶丝编织弹幕的织者：扇形连喷与螺旋光弹编织成网，狂暴后更难闪避。",
 	},
+	"lasher": {
+		"display_name": "晶镰领主", "archetype": A.BOSS, "tier": T.NORMAL,
+		"max_health": 1080.0, "armor": 3.0, "move_speed": 96.0, "body_radius": 17.0,
+		"knockback_resist": 0.9, "sight_range": 500.0, "score": 360,
+		"contact_damage": 15.0, "contact_cooldown": 0.55,
+		# ---------- 冲撞：连续两次的高速突进 ----------
+		"charge_trigger_range": 250.0, "charge_windup": 0.4, "charge_speed": 385.0,
+		"charge_duration": 0.5, "charge_damage": 26.0, "charge_knockback": 330.0,
+		"charge_cooldown": 5.2, "charge_stun_on_wall": 0.5,
+		# ---------- 扇形弹幕：宽扇 + 多波 ----------
+		"fan_count": 9, "fan_spread_deg": 62.0, "fan_bursts": 3, "fan_burst_interval": 0.15,
+		"fan_damage": 11.0, "fan_speed": 250.0, "fan_cooldown": 4.0, "fan_aim_time": 0.45,
+		# ---------- 螺旋弹幕：多臂慢速弹雨 ----------
+		"spiral_arms": 3, "spiral_step_deg": 13.0, "spiral_ticks": 18, "spiral_interval": 0.09,
+		"spiral_damage": 8.0, "spiral_speed": 178.0, "spiral_cooldown": 5.6,
+		# ---------- 环形弹幕 ----------
+		"radial_count": 18, "radial_waves": 2, "radial_wave_interval": 0.24,
+		"radial_damage": 12.0, "radial_speed": 210.0, "radial_cooldown": 4.4,
+		"radial_telegraph": 0.48,
+		# ---------- 召唤 + 砸地 ----------
+		"summon_ids": ["burrower", "grub_shard"], "summon_count": 3, "summon_cap": 6,
+		"summon_cooldown": 8.0, "summon_windup": 0.7, "summon_clear_delay": 5.0,
+		"slam_radius": 110.0, "slam_damage": 26.0, "slam_knockback": 310.0,
+		"slam_windup": 0.5, "slam_cooldown": 4.8, "slam_trigger_range": 135.0,
+		# ---------- 阶段 ----------
+		"phase_threshold": 0.5, "skill_interval": 1.1, "strafe_speed": 54.0,
+		"phase2_speed_mul": 1.16, "phase2_cooldown_mul": 0.7, "phase2_extra_bullets": 5,
+		"gold_min": 90, "gold_max": 150,
+		"drops": {"energy": 0.95, "health": 0.6, "shield_cell": 0.45, "bomb": 0.3, "weapon": 0.5, "talent": 0.45},
+		"sprite_base": "warden", "sprite_dir": "res://assets/sprites/bosses/",
+		"frame_count": 4, "anim_fps": 8.0,
+		"boss_sprite_scale": 1.0,
+		"sfx_attack": "swing_blade", "sfx_shoot": "boss_roar", "sfx_die": "boss_die", "sfx_hurt": "enemy_hurt",
+		"description": "把整座矿脉的速度塞进一把镰刀：更快的突进、更密的弹幕，还会从地里唤出穿地兽。",
+	},
+	"husk_king": {
+		"display_name": "晶骸王座", "archetype": A.BOSS, "tier": T.NORMAL,
+		"max_health": 1420.0, "armor": 5.0, "move_speed": 84.0, "body_radius": 19.0,
+		"knockback_resist": 0.95, "sight_range": 520.0, "score": 500,
+		"contact_damage": 18.0, "contact_cooldown": 0.5,
+		"charge_trigger_range": 240.0, "charge_windup": 0.5, "charge_speed": 350.0,
+		"charge_duration": 0.55, "charge_damage": 30.0, "charge_knockback": 350.0,
+		"charge_cooldown": 5.6, "charge_stun_on_wall": 0.6,
+		"radial_count": 20, "radial_waves": 3, "radial_wave_interval": 0.22,
+		"radial_damage": 13.0, "radial_speed": 200.0, "radial_cooldown": 4.2,
+		"radial_telegraph": 0.5,
+		"fan_count": 10, "fan_spread_deg": 70.0, "fan_bursts": 4, "fan_burst_interval": 0.13,
+		"fan_damage": 12.0, "fan_speed": 260.0, "fan_cooldown": 3.6, "fan_aim_time": 0.4,
+		"spiral_arms": 4, "spiral_step_deg": 11.0, "spiral_ticks": 22, "spiral_interval": 0.08,
+		"spiral_damage": 9.0, "spiral_speed": 185.0, "spiral_cooldown": 5.0,
+		"summon_ids": ["husk_elite", "shadewalker"], "summon_count": 4, "summon_cap": 8,
+		"summon_cooldown": 7.0, "summon_windup": 0.6, "summon_clear_delay": 4.5,
+		"slam_radius": 128.0, "slam_damage": 32.0, "slam_knockback": 350.0,
+		"slam_windup": 0.45, "slam_cooldown": 4.2, "slam_trigger_range": 150.0,
+		"phase_threshold": 0.55, "skill_interval": 0.95, "strafe_speed": 50.0,
+		"phase2_speed_mul": 1.2, "phase2_cooldown_mul": 0.66, "phase2_extra_bullets": 6,
+		"gold_min": 120, "gold_max": 200,
+		"drops": {"energy": 1.0, "health": 0.7, "shield_cell": 0.5, "bomb": 0.35, "weapon": 0.55, "talent": 0.5},
+		"sprite_base": "reaper", "sprite_dir": "res://assets/sprites/bosses/",
+		"frame_count": 4, "anim_fps": 7.0,
+		"boss_sprite_scale": 1.15,
+		"sfx_attack": "boss_slam", "sfx_shoot": "boss_roar", "sfx_die": "boss_die", "sfx_hurt": "enemy_hurt",
+		"description": "矿脉的终点形态：三层弹幕循环 + 精英召唤，容错极低。",
+	},
 	"reaper": {
 		"display_name": "晶脉收割者", "archetype": A.BOSS, "tier": T.NORMAL,
 		"max_health": 1015.0, "armor": 4.0, "move_speed": 88.0, "body_radius": 18.0,
@@ -167,6 +303,7 @@ const TABLE: Dictionary = {
 		# ---------- 召唤（掠晶猎犬群） ----------
 		"summon_ids": ["reaver_hound"], "summon_count": 4, "summon_cap": 8,
 		"summon_cooldown": 9.0, "summon_windup": 0.75,
+		"summon_clear_delay": 5.5,
 		# ---------- 砸地（挥镰震地） ----------
 		"slam_radius": 105.0, "slam_damage": 28.0, "slam_knockback": 300.0,
 		"slam_windup": 0.5, "slam_cooldown": 5.0, "slam_trigger_range": 130.0,
@@ -267,6 +404,14 @@ static func script_for(data: EnemyData) -> GDScript:
 			return BOMBER_SCRIPT
 		A.BOSS:
 			return BOSS_SCRIPT
+		A.STALKER:
+			return STALKER_SCRIPT
+		A.SPLITTER:
+			return SPLITTER_SCRIPT
+		A.BURROWER:
+			return BURROWER_SCRIPT
+		A.SUMMONER:
+			return SUMMONER_SCRIPT
 	return MELEE_SCRIPT
 
 

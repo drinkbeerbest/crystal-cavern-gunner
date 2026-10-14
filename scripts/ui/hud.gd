@@ -77,6 +77,8 @@ var _talent_slots: Array = []
 var _talent_bars: Array = []
 var _bomb_icon: TextureRect
 var _bomb_label: Label
+## 整层地牢小地图（常驻角落，Tab 切大图）
+var _minimap: Minimap = null
 
 var _toast_timer: float = 0.0
 var _crosshair_flash: float = 0.0
@@ -104,6 +106,10 @@ func _exit_tree() -> void:
 func setup(target_player: Player, owner_world: Node = null) -> void:
 	player = target_player
 	world = owner_world
+	# HUD 是先 add_child（触发 _ready → _build）再被 setup() 赋 world 的，
+	# 所以小地图的世界引用必须在这里补一次，否则拿不到地牢布局。
+	if _minimap != null:
+		_minimap.setup(world)
 	if _root != null:
 		_refresh_all()
 
@@ -134,6 +140,7 @@ func _build() -> void:
 	_build_phase_banner()
 	_build_vignette()
 	_build_crosshair()
+	_build_minimap()
 	_build_pause_overlay()
 
 	_update_mouse_mode()
@@ -257,6 +264,16 @@ func _build_talent_dock() -> void:
 		_talent_dock.add_child(bar)
 		_talent_slots.append(icon)
 		_talent_bars.append(bar)
+
+
+## 整层地牢小地图：常驻右上角，Tab 展开成居中大图。
+## 没有它，玩家无法规划"先去精英房拿钥匙、再绕去商店"这类路线决策。
+func _build_minimap() -> void:
+	_minimap = Minimap.new()
+	_minimap.name = "Minimap"
+	_minimap.setup(world)
+	# 挂在未缩放的 _root 上：这样展开成大图时不会被 UI_SCALE 二次放大
+	_root.add_child(_minimap)
 
 
 func _build_prompt_and_toast() -> void:
@@ -539,9 +556,22 @@ func _radial(fill_texture: String, pos: Vector2, size: float, parent: Control) -
 	return bar
 
 
+## Tab 在「角落小图 / 居中大图」间切换。
+## 放在 _process 而不是 _unhandled_input：HUD 是 CanvasLayer 且常驻，
+## 用 just_pressed 轮询不受输入事件派发顺序影响，也更省事。
+func _update_minimap_toggle() -> void:
+	if _minimap == null or is_paused or not _minimap.visible:
+		return
+	if not Input.is_action_just_pressed("map"):
+		return
+	_minimap.toggle_mode()
+	AudioMgr.play_sfx("ui_click", 0.0, -16.0)
+
+
 # ==================== 每帧刷新 ====================
 
 func _process(delta: float) -> void:
+	_update_minimap_toggle()
 	_update_crosshair(delta)
 	_update_toast(delta)
 	_update_phase_banner(delta)
@@ -884,8 +914,12 @@ func _on_boss_phase_changed(_boss: Node, phase_index: int) -> void:
 
 
 ## Boss 房小怪从有到无：提示玩家可以专心打 Boss 了
-func _on_boss_minions_cleared(_boss: Node) -> void:
-	show_toast("小怪已清空", 1.6)
+func _on_boss_minions_cleared(boss: Node) -> void:
+	# 明确告诉玩家"现在是反打窗口"，否则玩家会以为清完小怪 Boss 马上又召
+	var delay: float = 6.0
+	if boss != null and is_instance_valid(boss) and boss.get("data") != null:
+		delay = float((boss.get("data") as EnemyData).summon_clear_delay)
+	show_toast("小怪已清空 · %d 秒内它召不出新的" % int(round(delay)), 2.2)
 
 
 func _update_phase_banner(delta: float) -> void:

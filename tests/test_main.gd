@@ -53,7 +53,30 @@ func _run_all() -> void:
 		print("\n--- [%s] ---" % current_suite)
 		# 套件可能是协程（需要 await 物理帧等子弹飞行/计时器），统一 await 兼容同步与异步。
 		await suite.run(self)
+		# 套件之间的卫生：上一节如果没把自己创建的玩家/敌人彻底清干净，
+		# 它们会继续挂在 player / enemies 组里。后果不是"多一个节点"那么轻——
+		# CombatUtil.nearest_target 会挑到已作废的那个玩家，于是
+		# 「拾取物被凭空吸走」「Boss 冲撞打不到人」这类失败会出现在**别的**套件里，
+		# 极难排查。统一在这里清一次边界。
+		_purge_leftovers()
 	_report_and_quit()
+
+
+## 清掉所有遗留的战斗节点（玩家 / 敌人 / 拾取物 / 子弹），并等它们真正离开场景树
+func _purge_leftovers() -> void:
+	var groups: Array[String] = [
+		CombatUtil.GROUP_PLAYER, CombatUtil.GROUP_ENEMIES, CombatUtil.GROUP_INTERACTABLE,
+	]
+	for group_name: String in groups:
+		for node: Node in get_tree().get_nodes_in_group(group_name):
+			if is_instance_valid(node):
+				node.queue_free()
+	# queue_free 在帧末生效：清完还要等它真的消失，否则下一节仍可能挑到残留节点
+	for i: int in range(8):
+		await get_tree().process_frame
+		if get_tree().get_nodes_in_group(CombatUtil.GROUP_PLAYER).is_empty() \
+				and get_tree().get_nodes_in_group(CombatUtil.GROUP_ENEMIES).is_empty():
+			break
 
 
 func _on_watchdog() -> void:

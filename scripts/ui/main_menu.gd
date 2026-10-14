@@ -25,6 +25,14 @@ var _menu_root: Control
 var _floor_select_root: Control
 var _settings_root: Control
 var _armory_root: Control
+var _character_root: Control
+var _character_cards: Array = []      ## 每个角色一张卡 {id, card, bg, name_label, info_label, lock_label, click}
+var _talent_root: Control
+var _talent_header: Label
+var _talent_slots: Array = []         ## 12 个节点格 {node_id, card, bg, name_label, tier_label, click}
+var _talent_branch_tabs: Array = []
+var _talent_active_character: String = ""
+var _character_current_label: Label
 var _armory_wallet_label: Label
 var _armory_kit_slots: Array = []   ## 上方 3 槽位字典 {weapon_id, card, bg, icon, name_label, stat_label}
 var _armory_cards: Array = []       ## 下方 12 武器卡片字典 {weapon_id, card, price_label}
@@ -45,9 +53,13 @@ func _ready() -> void:
 	_build_floor_select()
 	_build_settings()
 	_build_armory()
+	_build_characters()
+	_build_talents()
 	_floor_select_root.visible = false
 	_settings_root.visible = false
 	_armory_root.visible = false
+	_character_root.visible = false
+	_talent_root.visible = false
 	_refresh_continue()
 
 	if _start_button != null:
@@ -108,6 +120,8 @@ func _build_menu() -> void:
 
 	_start_button = _menu_button("开始游戏", box, _on_start_pressed)
 	_continue_button = _menu_button("继续上次", box, _on_continue_pressed)
+	_menu_button("选择角色", box, _on_character_pressed)
+	_menu_button("天赋树", box, _on_talent_pressed)
 	_menu_button("武器图鉴", box, _on_armory_pressed)
 	_menu_button("设  置", box, _on_settings_pressed)
 	_menu_button("退出游戏", box, _on_quit_pressed)
@@ -510,6 +524,330 @@ static func _texture(relative_path: String) -> Texture2D:
 	return load(path) if ResourceLoader.exists(path) else null
 
 
+# ==================== 角色选择（M9） ====================
+
+## 角色选择：这是"我这一局是谁"的第一决策，必须能在开打前看清差异，
+## 所以每张卡都直接写明 生命 / 移速 / 技能 / 初始武器，而不是只给一个名字。
+func _build_characters() -> void:
+	_character_root = Control.new()
+	_character_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_character_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_canvas.add_child(_character_root)
+
+	var panel := _nine_patch("panel_9.png", Vector2(16, 14), Vector2(608, 330), 6, _character_root)
+	_label("选 择 角 色", Vector2(0, 10), Vector2(608, 16), 14, COLOR_TITLE, panel,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	_label("每个角色有独立的生命、初始武器、专属技能与天赋树",
+			Vector2(0, 28), Vector2(608, 11), 8, COLOR_DIM, panel, HORIZONTAL_ALIGNMENT_CENTER)
+
+	var card_w: float = 188.0
+	var card_h: float = 200.0
+	var start_x: float = (608.0 - (card_w * 3.0 + 16.0)) * 0.5
+	for i: int in range(CharacterDB.ids().size()):
+		var character_id: String = str(CharacterDB.ids()[i])
+		_character_cards.append(_character_card(panel, character_id,
+				Vector2(start_x + i * (card_w + 8.0), 46.0), Vector2(card_w, card_h)))
+
+	# 底部：显示当前选择 + 返回
+	_character_current_label = _label("", Vector2(0, 262), Vector2(608, 40), 9, COLOR_TEXT,
+			panel, HORIZONTAL_ALIGNMENT_CENTER)
+	var back := _pixel_button("返  回")
+	back.position = Vector2((608.0 - 96.0) * 0.5, 296)
+	back.size = Vector2(96, 22)
+	panel.add_child(back)
+	back.pressed.connect(_on_character_back)
+
+
+func _character_card(parent: Control, character_id: String, pos: Vector2, card_size: Vector2) -> Dictionary:
+	var card := Control.new()
+	card.position = pos
+	card.size = card_size
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(card)
+
+	var bg := _nine_patch("panel_9.png", Vector2.ZERO, card_size, 4, card)
+	var color: Color = CharacterDB.color_of(character_id)
+	var name_label := _label(CharacterDB.display_name(character_id), Vector2(10, 8),
+			Vector2(card_size.x - 20, 16), 12, color, card, HORIZONTAL_ALIGNMENT_CENTER)
+	var info_label := _label("", Vector2(10, 28), Vector2(card_size.x - 20, 76), 8, COLOR_TEXT,
+			card, HORIZONTAL_ALIGNMENT_LEFT)
+	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	var lock_label := _label("", Vector2(10, 108), Vector2(card_size.x - 20, 12), 8, COLOR_DIM,
+			card, HORIZONTAL_ALIGNMENT_CENTER)
+	var tag_label := _label("[%s]" % CharacterDB.tag_of(character_id), Vector2(10, 122),
+			Vector2(card_size.x - 20, 12), 10, color, card, HORIZONTAL_ALIGNMENT_CENTER)
+	tag_label.visible = false
+
+	var click := Button.new()
+	click.text = ""
+	click.position = Vector2.ZERO
+	click.size = card_size
+	click.flat = true
+	click.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.add_child(click)
+	click.pressed.connect(_on_character_card_pressed.bind(character_id))
+
+	return {"id": character_id, "card": card, "bg": bg, "name_label": name_label,
+		"info_label": info_label, "lock_label": lock_label, "tag_label": tag_label}
+
+
+func _refresh_characters() -> void:
+	if _character_root == null:
+		return
+	for entry: Dictionary in _character_cards:
+		var character_id: String = str(entry["id"])
+		var unlocked: bool = GameState.is_character_unlocked(character_id)
+		var selected: bool = GameState.character_id == character_id
+		var stats: Dictionary = CharacterDB.stat_overrides(character_id)
+		var skill_id: String = CharacterDB.skill_of(character_id)
+		var kit_names: Array[String] = []
+		for weapon_id: Variant in CharacterDB.starter_kit(character_id):
+			var weapon: WeaponData = WeaponDB.create(str(weapon_id))
+			if weapon != null:
+				kit_names.append(weapon.display_name)
+		var info: String = "生命 %d · 护盾 %d\n移速 %d\n暴击 %d%%\n技能：%s\n%s\n\n初始武器\n%s" % [
+			int(stats.get("max_health", G.DEFAULT_PLAYER_STATS["max_health"])),
+			int(stats.get("max_shield", G.DEFAULT_PLAYER_STATS["max_shield"])),
+			int(stats.get("move_speed", G.DEFAULT_PLAYER_STATS["move_speed"])),
+			int(round(float(stats.get("crit_chance", G.DEFAULT_PLAYER_STATS["crit_chance"])) * 100.0)),
+			SkillDB.display_name(skill_id), SkillDB.description(skill_id),
+			" · ".join(kit_names),
+		]
+		(entry["info_label"] as Label).text = info
+		var lock_label: Label = entry["lock_label"]
+		if unlocked:
+			lock_label.text = "已选择" if selected else ""
+			lock_label.add_theme_color_override("font_color", COLOR_TITLE)
+		else:
+			lock_label.text = CharacterDB.unlock_hint(character_id)
+			lock_label.add_theme_color_override("font_color", Color(0.55, 0.58, 0.65))
+		# 选中的卡高亮描边，未解锁的整张压暗
+		(entry["bg"] as NinePatchRect).modulate = (
+				Color(1.0, 0.94, 0.72) if selected else
+				(Color(1, 1, 1) if unlocked else Color(0.55, 0.55, 0.62)))
+		(entry["tag_label"] as Label).visible = unlocked
+
+	var character_id: String = GameState.character_id
+	_character_current_label.text = "当前：%s —— %s" % [
+		CharacterDB.display_name(character_id), CharacterDB.description(character_id)]
+
+
+func _on_character_pressed() -> void:
+	AudioMgr.play_sfx("ui_click")
+	_menu_root.visible = false
+	_character_root.visible = true
+	_refresh_characters()
+	_set_hint("选择本局使用的角色 · Esc 返回")
+
+
+func _on_character_back() -> void:
+	AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+	_character_root.visible = false
+	_menu_root.visible = true
+	_set_hint("Enter 开始 · Esc 退出设置")
+	if _start_button != null:
+		_start_button.grab_focus()
+
+
+func _on_character_card_pressed(character_id: String) -> void:
+	if not GameState.is_character_unlocked(character_id):
+		AudioMgr.play_sfx("empty", 0.0, -8.0)
+		_set_hint("%s：%s" % [CharacterDB.display_name(character_id),
+				CharacterDB.unlock_hint(character_id)])
+		return
+	if not GameState.select_character(character_id):
+		return
+	AudioMgr.play_sfx("ui_click")
+	_refresh_characters()
+
+
+# ==================== 天赋树（M9） ====================
+
+## 永久天赋树：三条支线各 4 层，前置未点时不可点。
+## 顶部是角色切换（每个角色一棵树），下面是 12 个节点格（4 列 = 4 层）。
+func _build_talents() -> void:
+	_talent_root = Control.new()
+	_talent_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_talent_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_canvas.add_child(_talent_root)
+
+	var panel := _nine_patch("panel_9.png", Vector2(10, 12), Vector2(620, 336), 6, _talent_root)
+	_label("永 久 天 赋 树", Vector2(0, 8), Vector2(620, 16), 14, COLOR_TITLE, panel,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	_talent_header = _label("", Vector2(0, 26), Vector2(620, 12), 8, COLOR_DIM, panel,
+			HORIZONTAL_ALIGNMENT_CENTER)
+
+	# 角色切换标签
+	var ids: Array = CharacterDB.ids()
+	for i: int in range(ids.size()):
+		var character_id: String = str(ids[i])
+		var tab := _pixel_button(CharacterDB.display_name(character_id))
+		tab.position = Vector2(150.0 + i * 110.0, 42)
+		tab.size = Vector2(104, 20)
+		tab.add_theme_font_size_override("font_size", 9)
+		panel.add_child(tab)
+		tab.pressed.connect(_on_talent_tab_pressed.bind(character_id))
+		_talent_branch_tabs.append({"id": character_id, "button": tab})
+
+	# 3 条支线 × 4 层 = 12 个节点
+	var cell_w: float = 92.0
+	var cell_h: float = 62.0
+	var branch_x: Array = [34.0, 222.0, 410.0]
+	for i: int in range(TalentTree.BRANCHES.size()):
+		var branch: String = TalentTree.BRANCHES[i]
+		_label(TalentTree.branch_name(branch), Vector2(branch_x[i], 70), Vector2(cell_w, 12), 10,
+				TalentTree.branch_color(branch), panel, HORIZONTAL_ALIGNMENT_CENTER)
+		for tier: int in range(TalentTree.TIERS):
+			var node_id: String = _node_id_at(branch, tier)
+			_talent_slots.append(_talent_cell(panel, node_id,
+					Vector2(branch_x[i], 86.0 + tier * (cell_h + 6.0)), Vector2(cell_w, cell_h), branch))
+
+	var reset_btn := _pixel_button("洗 点")
+	reset_btn.position = Vector2(16, 302)
+	reset_btn.size = Vector2(84, 22)
+	panel.add_child(reset_btn)
+	reset_btn.pressed.connect(_on_talent_reset_pressed)
+
+	var back := _pixel_button("返  回")
+	back.position = Vector2((620.0 - 96.0) * 0.5, 302)
+	back.size = Vector2(96, 22)
+	panel.add_child(back)
+	back.pressed.connect(_on_talent_back)
+
+
+## 在三棵树里按 支线 + 层数 找节点 id（三个角色结构一致，所以用第一个角色定位）
+func _node_id_at(branch: String, tier: int) -> String:
+	for node: Dictionary in TalentTree.nodes_of(CharacterDB.ids()[0]):
+		if str(node.get("branch", "")) == branch and int(node.get("tier", -1)) == tier:
+			return str(node.get("id", ""))
+	return ""
+
+
+func _talent_cell(parent: Control, node_id: String, pos: Vector2, cell_size: Vector2,
+		branch: String) -> Dictionary:
+	var card := Control.new()
+	card.position = pos
+	card.size = cell_size
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(card)
+
+	var bg := _nine_patch("panel_9.png", Vector2.ZERO, cell_size, 4, card)
+	var name_label := _label("", Vector2(4, 4), Vector2(cell_size.x - 8, 13), 9, COLOR_TEXT, card,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	var desc_label := _label("", Vector2(4, 18), Vector2(cell_size.x - 8, 32), 7, COLOR_DIM, card,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	var cost_label := _label("", Vector2(4, cell_size.y - 13), Vector2(cell_size.x - 8, 11), 8,
+			TalentTree.branch_color(branch), card, HORIZONTAL_ALIGNMENT_CENTER)
+
+	var click := Button.new()
+	click.text = ""
+	click.position = Vector2.ZERO
+	click.size = cell_size
+	click.flat = true
+	click.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.add_child(click)
+	click.pressed.connect(_on_talent_node_pressed.bind(node_id))
+	return {"node_id": node_id, "bg": bg, "name_label": name_label, "desc_label": desc_label,
+		"cost_label": cost_label}
+
+
+func _refresh_talents() -> void:
+	if _talent_root == null:
+		return
+	if _talent_active_character.is_empty() or not CharacterDB.has_character(_talent_active_character):
+		_talent_active_character = GameState.character_id
+	var character_id: String = _talent_active_character
+	var allocated: Array = GameState.allocated_nodes(character_id)
+
+	for tab: Dictionary in _talent_branch_tabs:
+		var tab_id: String = str(tab["id"])
+		var unlocked: bool = GameState.is_character_unlocked(tab_id)
+		var btn: Button = tab["button"]
+		btn.modulate = Color(1, 1, 1) if (tab_id == character_id and unlocked) \
+				else Color(0.6, 0.6, 0.66)
+
+	for slot: Dictionary in _talent_slots:
+		var node_id: String = str(slot["node_id"])
+		var node: Dictionary = TalentTree.get_node(character_id, node_id)
+		if node.is_empty():
+			(slot["card"] as Control).visible = false
+			continue
+		(slot["card"] as Control).visible = true
+		(slot["name_label"] as Label).text = str(node.get("display_name", ""))
+		(slot["desc_label"] as Label).text = str(node.get("description", ""))
+		var owned: bool = allocated.has(node_id)
+		var affordable: bool = GameState.can_allocate(node_id)
+		(slot["cost_label"] as Label).text = "已激活" if owned else "需 %d 点" % TalentTree.cost_of(node)
+		var tint: Color = Color(1, 1, 1)
+		if owned:
+			tint = TalentTree.branch_color(str(node.get("branch", "")))
+		elif not affordable:
+			tint = Color(0.55, 0.55, 0.62)
+		elif not GameState.is_character_unlocked(character_id):
+			tint = Color(0.5, 0.5, 0.58)
+		(slot["bg"] as NinePatchRect).modulate = tint
+
+	var complete: bool = GameState.is_talent_tree_complete(character_id)
+	_talent_header.text = "%s · 技能：%s · 可用天赋点 %d · 已激活 %d/%d%s" % [
+		CharacterDB.display_name(character_id), SkillDB.display_name(CharacterDB.skill_of(character_id)),
+		GameState.talent_points, allocated.size(), TalentTree.nodes_of(character_id).size(),
+		"（已点满）" if complete else ""]
+
+
+func _on_talent_pressed() -> void:
+	AudioMgr.play_sfx("ui_click")
+	_menu_root.visible = false
+	_talent_root.visible = true
+	_refresh_talents()
+	_set_hint("点击节点消耗天赋点 · Esc 返回")
+
+
+func _on_talent_back() -> void:
+	AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+	_talent_root.visible = false
+	_menu_root.visible = true
+	_set_hint("Enter 开始 · Esc 退出设置")
+	if _start_button != null:
+		_start_button.grab_focus()
+
+
+func _on_talent_tab_pressed(character_id: String) -> void:
+	if not GameState.is_character_unlocked(character_id):
+		AudioMgr.play_sfx("empty", 0.0, -8.0)
+		_set_hint("%s：%s" % [CharacterDB.display_name(character_id),
+				CharacterDB.unlock_hint(character_id)])
+		return
+	_talent_active_character = character_id
+	AudioMgr.play_sfx("ui_click")
+	_refresh_talents()
+
+
+func _on_talent_node_pressed(node_id: String) -> void:
+	# 面板可能在查看别的角色，但加点只作用于当前出战角色的树
+	if _talent_active_character != GameState.character_id:
+		_set_hint("只能为当前角色「%s」加点" % CharacterDB.display_name(GameState.character_id))
+		AudioMgr.play_sfx("empty", 0.0, -8.0)
+		return
+	if GameState.allocate_talent(node_id):
+		AudioMgr.play_sfx("pickup_talent", 0.0, -8.0)
+	else:
+		AudioMgr.play_sfx("empty", 0.0, -8.0)
+		_set_hint("天赋点不足，或前置节点还没点")
+	_refresh_talents()
+
+
+func _on_talent_reset_pressed() -> void:
+	if GameState.reset_talents(_talent_active_character):
+		AudioMgr.play_sfx("ui_back", 0.0, -6.0)
+		_set_hint("已洗点，天赋点已退还")
+	else:
+		AudioMgr.play_sfx("empty", 0.0, -8.0)
+	_refresh_talents()
+
+
 # ==================== 交互 ====================
 
 func _refresh_continue() -> void:
@@ -530,6 +868,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if _armory_root.visible:
 			_on_armory_back()
+			get_viewport().set_input_as_handled()
+			return
+		if _character_root.visible:
+			_on_character_back()
+			get_viewport().set_input_as_handled()
+			return
+		if _talent_root.visible:
+			_on_talent_back()
 			get_viewport().set_input_as_handled()
 			return
 		if _settings_root.visible:

@@ -11,7 +11,7 @@ extends Resource
 const G := preload("res://scripts/core/game_const.gd")
 
 ## 行为原型：决定用哪个 Enemy 子类
-enum Archetype { MELEE, RANGED, BOMBER, BOSS }
+enum Archetype { MELEE, RANGED, BOMBER, BOSS, STALKER, SPLITTER, BURROWER, SUMMONER }
 ## 强度档位：精英血量/伤害/掉落更好，贴图带 _elite 后缀
 enum Tier { NORMAL, ELITE }
 
@@ -71,6 +71,32 @@ const SPRITE_DIR: String = "res://assets/sprites/enemies/"
 @export var death_explosion_ratio: float = 0.7   ## 被击杀引爆的伤害占比
 @export var wobble: float = 26.0                 ## 移动时的左右摆动幅度
 
+# ---------- STALKER：潜行 -> 显形突刺 ----------
+@export var strike_trigger_range: float = 96.0   ## 潜行到多近开始显形
+## 显形前摇时长：玩家唯一的反应窗口。
+## 隐形怪的平衡全押在这一项上——它给得越短，玩家越是「被白嫖」。
+@export var reveal_time: float = 0.85
+@export var strike_speed: float = 430.0          ## 突刺速度
+@export var strike_duration: float = 0.32        ## 突刺最长时长
+@export var strike_damage: float = 18.0
+@export var strike_knockback: float = 300.0
+
+# ---------- SPLITTER：死亡分裂 ----------
+@export var split_into: String = ""              ## 碎片 id（留空 = 不会分裂）
+@export var shard_contact_damage: float = 5.0   ## 碎片贴脸伤害（比母体低）
+
+# ---------- BURROWER：钻地穿墙 -> 破土 ----------
+@export var erupt_trigger_range: float = 120.0  ## 潜行到多近开始预警破土
+@export var erupt_damage: float = 22.0
+@export var erupt_knockback: float = 340.0
+
+# ---------- SUMMONER：持续召唤 ----------
+## summon_ring  召唤点距离自身的半径
+## summon_life  召唤物的存活时间（秒）：到点自毁，所以"放着不管"不是解
+## summon_clear_delay 复用 BOSS 段的同名字段，两者语义相同（召唤物清空后的禁召期）
+@export var summon_ring: float = 46.0
+@export var summon_life: float = 9.0
+
 # ---------- BOSS：阶段 / 弹幕 / 召唤 / 砸地 ----------
 @export var phase_threshold: float = 0.5         ## 血量比例低于该值进入阶段 2
 @export var boss_sprite_scale: float = 1.0       ## Boss 贴图额外缩放（素材本身已比普通怪大）
@@ -107,6 +133,10 @@ const SPRITE_DIR: String = "res://assets/sprites/enemies/"
 @export var summon_cap: int = 6                  ## 场上非 Boss 小怪上限
 @export var summon_cooldown: float = 11.0
 @export var summon_windup: float = 0.7
+## 召唤物被清空后的「喘息期」（秒）：这段时间内 Boss 不许再召唤。
+## 没有它的话，Boss 会把小怪丢出去→玩家清掉→冷却刚好转好→立刻再丢，
+## 整场战斗变成无限刷杂兵，玩家永远等不到一个能喘口气的反打窗口。
+@export var summon_clear_delay: float = 6.0
 ## 砸地：贴脸时的范围伤害
 @export var slam_radius: float = 92.0
 @export var slam_damage: float = 22.0
@@ -114,6 +144,34 @@ const SPRITE_DIR: String = "res://assets/sprites/enemies/"
 @export var slam_windup: float = 0.45
 @export var slam_cooldown: float = 5.2
 @export var slam_trigger_range: float = 110.0
+
+# ---------- BOSS：M9 新增三招 ----------
+## 扫射激光：持续站在光束里就持续掉血，逼玩家"跑出扇区"而不是"在弹流里找空隙"
+@export var sweep_degrees: float = 80.0        ## 来回扫过的总角度
+@export var sweep_half_width_deg: float = 7.0 ## 光束半宽
+@export var sweep_length: float = 340.0        ## 光束长度
+@export var sweep_duration: float = 1.6        ## 扫射持续时间
+@export var sweep_dps: float = 26.0            ## 每秒伤害
+@export var sweep_windup: float = 0.7
+@export var sweep_cooldown: float = 8.0
+## 追踪导弹：分批慢速弹，作用是逼玩家换位而不是秒杀
+@export var missile_count: int = 3             ## 每批几枚
+@export var missile_damage: float = 14.0
+@export var missile_speed: float = 150.0       ## 刻意慢：慢才可读、可躲
+@export var missile_homing: float = 1.6
+@export var missile_wave_interval: float = 0.35
+@export var missile_windup: float = 0.6
+@export var missile_cooldown: float = 7.0
+## 闪现：瞬移到玩家附近并炸一圈。落点必有预警圈，否则就是纯 unfair
+@export var blink_range: float = 190.0         ## 落点相对玩家的散布半径
+@export var blink_blast_radius: float = 78.0
+@export var blink_damage: float = 24.0
+@export var blink_knockback: float = 380.0
+@export var blink_windup: float = 0.55
+## 位移途中的时间（这期间 Boss 不参与碰撞，玩家也打不到它）
+@export var blink_travel_time: float = 0.14
+@export var blink_cooldown: float = 6.0
+
 ## 阶段 2 强化
 @export var phase2_speed_mul: float = 1.14
 @export var phase2_cooldown_mul: float = 0.78
@@ -248,6 +306,11 @@ const FIELDS: Array[String] = [
 	"spread_deg", "strafe_strength",
 	"fuse_trigger_range", "fuse_time", "explosion_radius", "explosion_damage",
 	"explosion_knockback", "explode_on_death", "death_explosion_ratio", "wobble",
+	"strike_trigger_range", "reveal_time", "strike_speed", "strike_duration",
+	"strike_damage", "strike_knockback",
+	"split_into", "shard_contact_damage",
+	"erupt_trigger_range", "erupt_damage", "erupt_knockback",
+	"summon_ring", "summon_life", "summon_clear_delay",
 	"phase_threshold", "boss_sprite_scale", "skill_interval", "strafe_speed",
 	"radial_count", "radial_waves", "radial_wave_interval", "radial_damage", "radial_speed",
 	"radial_cooldown", "radial_telegraph",
@@ -256,8 +319,15 @@ const FIELDS: Array[String] = [
 	"spiral_arms", "spiral_step_deg", "spiral_ticks", "spiral_interval", "spiral_damage",
 	"spiral_speed", "spiral_cooldown",
 	"summon_ids", "summon_count", "summon_cap", "summon_cooldown", "summon_windup",
+	"summon_clear_delay",
 	"slam_radius", "slam_damage", "slam_knockback", "slam_windup", "slam_cooldown",
 	"slam_trigger_range",
+	"sweep_degrees", "sweep_half_width_deg", "sweep_length", "sweep_duration", "sweep_dps",
+	"sweep_windup", "sweep_cooldown",
+	"missile_count", "missile_damage", "missile_speed", "missile_homing",
+	"missile_wave_interval", "missile_windup", "missile_cooldown",
+	"blink_range", "blink_blast_radius", "blink_damage", "blink_knockback",
+	"blink_windup", "blink_travel_time", "blink_cooldown",
 	"phase2_speed_mul", "phase2_cooldown_mul", "phase2_extra_bullets",
 	"gold_min", "gold_max", "energy_amount", "health_amount", "shield_amount", "drops",
 	"sprite_base", "sprite_dir", "frame_count", "anim_fps", "sprite_offset",

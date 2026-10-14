@@ -47,6 +47,7 @@ var rng := RandomNumberGenerator.new()
 # ---------- 图层 ----------
 var world_root: Node2D      ## 房间容器（地牢模式下每房一间，换房时整棵释放）
 var room_root: Node2D       ## 当前房间的地板 / 墙体 / 障碍 / 装饰
+var decal_root: Node2D      ## 地面贴花层（Boss 技能预警）：地板之上、角色之下
 var entity_root: Node2D     ## 玩家 / 敌人 / 靶子 / 掉落（Y 排序）
 var bullet_root: Node2D     ## 子弹 / 光束
 var fx_root: Node2D         ## 特效 / 飘字
@@ -175,6 +176,13 @@ func _build_layers() -> void:
 	world_root.name = "WorldLayer"
 	add_child(world_root)
 
+	# 贴花层夹在地板与角色之间：靠子节点顺序决定绘制先后，
+	# 这样 Boss 的危险区既能看清范围，又永远压在角色下面不挡操作。
+	decal_root = Node2D.new()
+	decal_root.name = "DecalLayer"
+	decal_root.y_sort_enabled = false
+	add_child(decal_root)
+
 	entity_root = Node2D.new()
 	entity_root.name = "EntityLayer"
 	entity_root.y_sort_enabled = true
@@ -196,9 +204,13 @@ func _spawn_player() -> void:
 	# 避免"起始手枪 + 试验三把"超出 3 个栏位而互相顶替。
 	if dungeon_mode:
 		# 地牢模式：读档继续时沿用存档里的武器；新开一局（new_run 已清空）
-		# 发"武器图鉴初始武器 + 两把试验武器"，默认状况与原来的核心三把一致
+		# 发当前角色的专属初始武器——角色系统上线后，初始枪由角色决定，
+		# 武器图鉴里自选的那三把只作为「未选角色时的回退」。
 		if GameState.weapons.is_empty():
-			for weapon: Variant in WeaponDB.starter_kit(GameState.starter_kit_ids):
+			var kit: Array = CharacterDB.starter_kit(GameState.character_id) \
+					if CharacterDB.has_character(GameState.character_id) \
+					else GameState.starter_kit_ids
+			for weapon: Variant in WeaponDB.starter_kit(kit):
 				GameState.add_weapon(weapon)
 			GameState.weapon_index = 0
 	else:
@@ -215,6 +227,7 @@ func _spawn_player() -> void:
 	player.position = _spawn_point
 	player.bullet_layer = bullet_root
 	player.fx_layer = fx_root
+	player.entity_root = entity_root
 	entity_root.add_child(player)
 	# 出生保护：刚落地/刚进房时不会被贴脸伤害秒掉
 	player.set_invulnerable(G.SPAWN_PROTECTION)
@@ -910,14 +923,24 @@ func _activate_current_room() -> void:
 
 
 ## M7：本层 Boss 房投放的敌人 id（按层数轮换 Boss，终极层出收割者）
+## M9 扩到 8 层：每 2~3 层换一个 Boss，中段 3F 与 7F 安排双 Boss。
+## 排期原则——新 Boss 不要连着出，中间夹一个玩家已经熟悉的 Boss 当缓冲。
 func _boss_wave_ids() -> Array:
 	match GameState.floor_index:
 		2:
 			return ["weaver"]
 		3:
-			return ["warden", "weaver"]
+			return ["warden", "shadewalker"]
 		4:
 			return ["reaper"]
+		5:
+			return ["lasher"]
+		6:
+			return ["warden", "weaver"]
+		7:
+			return ["husk_king", "burrower"]
+		8:
+			return ["husk_king", "lasher"]
 		_:
 			return ["warden"]
 

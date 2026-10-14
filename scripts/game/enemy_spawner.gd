@@ -147,6 +147,7 @@ func spawn_enemy(enemy_id: String, at_position: Variant = null) -> Enemy:
 	enemy.position = position_value
 	enemy.bullet_layer = _bullet_layer
 	enemy.fx_layer = _fx_layer
+	enemy.decal_layer = _node2d_prop(world, "decal_root")
 	enemy.world_node = world
 	enemy.auto_free = auto_free
 	host_node.add_child(enemy)

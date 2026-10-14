@@ -18,6 +18,11 @@ signal bombs_changed(count: int)
 signal floor_changed(floor_index: int)
 signal key_changed(has_key: bool)
 signal settings_changed
+## 角色切换
+signal character_changed(character_id: String)
+## 天赋树：allocated 的 node_id 为空字符串表示洗点
+signal talent_allocated(character_id: String, node_id: String)
+signal talent_points_changed(points: int)
 
 # ---------- 一局游戏状态 ----------
 var run_active: bool = false
@@ -46,12 +51,26 @@ var has_floor_key: bool = false
 var best_floor: int = 0
 var unlocked_floor: int = 1
 var total_runs: int = 0
+## 累计通关次数（解锁角色 / 发放天赋点的依据）
+var total_wins: int = 0
 ## 账户金币：跨局持久化，开局前可在武器图鉴中花费，替换初始武器。
 ## 完全通关（最后一层）时，当局金币的 1/3 转化为账户金币。
 const ACCOUNT_GOLD_START: int = 300
 var account_gold: int = ACCOUNT_GOLD_START
 ## 武器图鉴选定的开局初始 3 把武器 id（默认核心三把）
 var starter_kit_ids: Array[String] = ["pistol", "shotgun", "laser"]
+
+# ---------- 角色 / 永久天赋树 ----------
+## 本局选择的角色 id（CharacterDB 的键）
+var character_id: String = CharacterDB.STARTER_ID
+## 天赋点总数（元进度，靠通关与到达层数获得）
+var talent_points: int = 0
+## 已获得的天赋点总数（展示用，不随加点减少）
+var talent_points_total: int = 0
+## 每棵树的已分配节点：{ character_id: Array[String] }
+var talent_allocations: Dictionary = {}
+## 上一局使用的角色（结算界面展示）
+var last_character_id: String = ""
 ## 最近一次 end_run 时通关转化的账户金币数（结算界面展示用）
 var last_account_added: int = 0
 var settings: Dictionary = {
@@ -80,7 +99,12 @@ func new_run(seed_value: int = 0, start_floor: int = 1) -> void:
 	weapon_index = 0
 	talents.clear()
 	bombs = G.START_BOMBS
-	stats = G.DEFAULT_PLAYER_STATS.duplicate(true)
+	# 角色 + 永久天赋树共同决定本局属性（而不是裸的 DEFAULT_PLAYER_STATS）
+	last_character_id = character_id
+	apply_character_loadout()
+	bombs += int(stats.get("start_bombs", 0.0))
+	bombs = G.clampi(bombs, 0, G.MAX_BOMBS)
+	gold += int(float(stats.get("gold_start", 0.0)))
 	kills = 0
 	elite_kills = 0
 	score = 0
@@ -122,7 +146,11 @@ func restore_run(data: Dictionary) -> bool:
 	weapon_index = int(data.get("weapon_index", 0))
 	talents = _deserialize_talents(data.get("talents", []))
 	bombs = G.clampi(int(data.get("bombs", G.START_BOMBS)), 0, G.MAX_BOMBS)
-	stats = G.DEFAULT_PLAYER_STATS.duplicate(true)
+	# 读档：角色以存档为准；旧存档没有该字段时沿用当前选择的角色
+	var saved_character: String = str(data.get("character_id", ""))
+	if CharacterDB.has_character(saved_character):
+		character_id = saved_character
+	apply_character_loadout()
 	for k: String in data.get("stats", {}).keys():
 		if stats.has(k):
 			stats[k] = data["stats"][k]
@@ -145,7 +173,12 @@ func restore_run(data: Dictionary) -> bool:
 ## 结束一局（胜利或失败）
 func end_run(victory: bool) -> void:
 	run_active = false
+	var reached_new_floor: bool = floor_index > best_floor
 	best_floor = max(best_floor, floor_index)
+	if victory and floor_index >= G.TOTAL_FLOORS:
+		total_wins += 1
+	# 元进度结算：首通新层 / 通关都会发天赋点
+	grant_progress_rewards(victory, reached_new_floor)
 	# 完全通关（打完最后一层）时，当局积攒金币的 1/3 转化为账户金币
 	last_account_added = 0
 	if victory and floor_index >= G.TOTAL_FLOORS:
@@ -393,6 +426,129 @@ func snapshot_stats(from_stats: Dictionary) -> void:
 			stats[k] = from_stats[k]
 
 
+# ==================== 角色 ====================
+
+## 当前角色是否已解锁
+func is_character_unlocked(character_id_override: String) -> bool:
+	return CharacterDB.is_unlocked(character_id_override, best_floor, total_wins)
+
+
+## 选择本局角色（未解锁的角色会被拒绝）
+func select_character(character_id_override: String) -> bool:
+	if not CharacterDB.has_character(character_id_override):
+		return false
+	if not is_character_unlocked(character_id_override):
+		return false
+	character_id = character_id_override
+	_apply_character_stats()
+	character_changed.emit(character_id)
+	_save_meta()
+	return true
+
+
+## 当前角色的主动技能 id
+func current_skill() -> String:
+	return CharacterDB.skill_of(character_id)
+
+
+## 把「角色基础覆盖 + 永久天赋修正」合成为本局 stats。
+## 调用时机：new_run / restore_run / 切换角色 / 加点之后。
+func apply_character_loadout() -> void:
+	stats = G.DEFAULT_PLAYER_STATS.duplicate(true)
+	_apply_character_stats()
+	_apply_talent_modifiers()
+
+
+func _apply_character_stats() -> void:
+	if stats.is_empty():
+		stats = G.DEFAULT_PLAYER_STATS.duplicate(true)
+	# 1) 角色基础属性（生命 / 移速 / 技能冷却…）
+	var overrides: Dictionary = CharacterDB.stat_overrides(character_id)
+	for key: String in overrides.keys():
+		stats[key] = float(overrides[key])
+	# 2) 永久天赋树的修正（跨局累积）
+	var bonus: Dictionary = character_bonus()
+	for key: String in bonus.keys():
+		stats[key] = float(stats.get(key, 0.0)) + float(bonus[key])
+
+
+# ==================== 永久天赋树 ====================
+
+## 某角色已分配的节点列表
+func allocated_nodes(character_id_override: String = "") -> Array:
+	var key: String = character_id_override if not character_id_override.is_empty() else character_id
+	var list: Variant = talent_allocations.get(key, [])
+	return list if list is Array else []
+
+
+## 某角色天赋树带来的永久修正
+func character_bonus(character_id_override: String = "") -> Dictionary:
+	var key: String = character_id_override if not character_id_override.is_empty() else character_id
+	return TalentTree.bonus_of(key, allocated_nodes(key))
+
+
+## 该节点当前是否可加点
+func can_allocate(node_id: String) -> bool:
+	var node: Dictionary = TalentTree.get_node(character_id, node_id)
+	if node.is_empty() or talent_points < TalentTree.cost_of(node):
+		return false
+	return TalentTree.can_unlock(character_id, node_id, allocated_nodes())
+
+
+## 加点。返回是否成功（点数不足 / 前置未点 / 重复点都返回 false）。
+func allocate_talent(node_id: String) -> bool:
+	var node: Dictionary = TalentTree.get_node(character_id, node_id)
+	if node.is_empty():
+		return false
+	var cost: int = TalentTree.cost_of(node)
+	if talent_points < cost or not TalentTree.can_unlock(character_id, node_id, allocated_nodes()):
+		return false
+	talent_points -= cost
+	var list: Array = allocated_nodes().duplicate()
+	list.append(node_id)
+	talent_allocations[character_id] = list
+	# 加点立刻反映到属性上：重算而不是叠加，避免旧加成残留
+	_apply_character_stats()
+	talent_allocated.emit(character_id, node_id)
+	_save_meta()
+	return true
+
+
+## 洗点：退回该角色所有点数。
+## 刻意提供——第一次玩很难猜对加点顺序，锁死不能改会让人因为一次误点而弃坑。
+func reset_talents(character_id_override: String = "") -> bool:
+	var key: String = character_id_override if not character_id_override.is_empty() else character_id
+	if not talent_allocations.has(key):
+		return false
+	talent_points += TalentTree.spent_points_of(key, allocated_nodes(key))
+	talent_allocations.erase(key)
+	_apply_character_stats()
+	talent_allocated.emit(key, "")
+	_save_meta()
+	return true
+
+
+## 获得天赋点（解锁新角色 / 通关时调用）
+func grant_talent_points(amount: int) -> void:
+	if amount <= 0:
+		return
+	talent_points += amount
+	talent_points_total += amount
+	talent_points_changed.emit(talent_points)
+	_save_meta()
+
+
+## 元进度推进：首通新层给 1 点，完全通关额外给 3 点
+func grant_progress_rewards(victory: bool, reached_new_floor: bool) -> void:
+	grant_talent_points((1 if reached_new_floor else 0) + (3 if victory else 0))
+
+
+## 该角色是否已点满整棵树（结算界面提示「可换角色」用）
+func is_talent_tree_complete(character_id_override: String = "") -> bool:
+	var key: String = character_id_override if not character_id_override.is_empty() else character_id
+	return TalentTree.is_tree_complete(key, allocated_nodes(key))
+
+
 # ==================== 设置 ====================
 
 func set_setting(key: String, value: Variant) -> void:
@@ -420,6 +576,27 @@ func _load_meta_and_settings() -> void:
 	best_floor = int(meta.get("best_floor", 0))
 	unlocked_floor = maxi(int(meta.get("unlocked_floor", 1)), 1)
 	total_runs = int(meta.get("total_runs", 0))
+	total_wins = int(meta.get("total_wins", 0))
+	talent_points = int(meta.get("talent_points", 0))
+	talent_points_total = maxi(talent_points, int(meta.get("talent_points_total", 0)))
+	# 天赋树分配：逐角色读入，丢弃已不存在的节点（版本迭代后不会崩）
+	talent_allocations = {}
+	var raw_allocations: Variant = meta.get("talent_allocations", {})
+	if raw_allocations is Dictionary:
+		for key: Variant in (raw_allocations as Dictionary).keys():
+			var character_key: String = str(key)
+			if not CharacterDB.has_character(character_key):
+				continue
+			var valid: Array = []
+			for node_id: Variant in ((raw_allocations as Dictionary)[key] as Array):
+				var node_key: String = str(node_id)
+				if not TalentTree.get_node(character_key, node_key).is_empty():
+					valid.append(node_key)
+			if not valid.is_empty():
+				talent_allocations[character_key] = valid
+	var saved_character: String = str(meta.get("character_id", ""))
+	if CharacterDB.has_character(saved_character):
+		character_id = saved_character
 	account_gold = maxi(int(meta.get("account_gold", ACCOUNT_GOLD_START)), 0)
 	var loaded_kit: Array = meta.get("starter_kit_ids", [])
 	if loaded_kit.is_empty():
@@ -440,6 +617,11 @@ func _save_meta() -> void:
 		"best_floor": best_floor,
 		"unlocked_floor": unlocked_floor,
 		"total_runs": total_runs,
+		"total_wins": total_wins,
+		"talent_points": talent_points,
+		"talent_points_total": talent_points_total,
+		"talent_allocations": talent_allocations,
+		"character_id": character_id,
 		"account_gold": account_gold,
 		"starter_kit_ids": starter_kit_ids,
 	})
@@ -471,6 +653,7 @@ func save_current_run() -> void:
 		"run_seed": run_seed,
 		"floor_index": floor_index,
 		"gold": gold,
+		"character_id": character_id,
 		"weapon_index": weapon_index,
 		"weapons": _serialize_weapons(weapons),
 		"talents": _serialize_talents(),

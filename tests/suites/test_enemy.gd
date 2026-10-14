@@ -25,12 +25,158 @@ func suite_name() -> String:
 func run(t: Node) -> void:
 	_test_enemy_table(t)
 	await _test_spawn_and_activation(t)
+	await _test_new_archetypes(t)
 	await _test_hit_and_death_drops(t)
 	await _test_melee_charge(t)
 	await _test_ranged_shooter(t)
 	await _test_bomber_fuse(t)
 	await _test_separation(t)
 	await _test_wave_scheduling(t)
+
+
+# ==================== M9：四种新行为原型 ====================
+
+## 覆盖隐形 / 分裂 / 钻地 / 召唤 四种新原型的核心行为契约。
+## 这些是"手感型"机制，断言只锁住**必须成立的那条不变量**（比如隐形怪
+## 必须留下可读的痕迹、分裂后碎片数量正确），不去钉死每一帧的位移。
+func _test_new_archetypes(t: Node) -> void:
+	print("")
+	print("--- [新行为原型 M9] ---")
+	var world: GameWorld = _make_world(t)
+	var player: Player = _tough_player(world)
+	t.not_null(player, "测试环境玩家就绪")
+	if player == null:
+		await _free_world(t, world)
+		return
+	var anchor: Vector2 = player.global_position
+	# 本节会同时放出近战、破土、召唤物，玩家挨几下就会死；
+	# 而玩家一死，后面几个套件（拾取 / 冲撞）会被连锁带崩。
+	# 所以这里全程只验敌人的行为，不验玩家能不能挨住。
+	player.set_invulnerable(999.0)
+
+	# --- 影袭者：潜行留痕 + 显形突刺 ---
+	var stalker: Enemy = world.spawn_enemy("shadewalker", anchor + Vector2(240, 0))
+	t.not_null(stalker, "生成影袭者")
+	if stalker != null:
+		t.check(stalker is EnemyStalker, "影袭者挂的是 EnemyStalker 脚本")
+		# 平衡红线：隐形怪必须「脆 + 可反应」，这两条是它的两条命门
+		t.lte(stalker.max_health, 20.0, "影袭者血量被压在最低档（不给玩家磨血的空间）")
+		t.gte(stalker.data.reveal_time, 0.7, "显形前摇 >= 0.7 秒（玩家有反应窗口）")
+		t.gt(float(stalker.data.reveal_time), 0.0, "显形前摇为正")
+		# 显形前摇必须走数据表而不是脚本常量
+		t.near((stalker as EnemyStalker).reveal_duration(), stalker.data.reveal_time, 0.001,
+				"显形时长读自数值表（可调）")
+		stalker.data.contact_damage = 0.0
+		stalker.activate()
+		stalker.set_target(player)
+		stalker.global_position = anchor + Vector2(150, 0)
+		await _frames(t, 4)
+		# 潜行时必须有可读痕迹（半透明剪影），不能真的消失
+		var sprite: Sprite2D = stalker.get("_sprite")
+		t.check(sprite != null, "影袭者有贴图")
+		if sprite != null:
+			t.lte(sprite.modulate.a, 0.9, "潜行时贴图半透明（玩家能看见它）")
+			t.gt(sprite.modulate.a, 0.0, "潜行时贴图不是完全透明")
+		# 贴近后应当进入显形前摇
+		stalker.global_position = anchor + Vector2(60, 0)
+		await _frames(t, 4)
+		t.gte(float((stalker as EnemyStalker).reveals), 1.0, "贴近后触发显形")
+		# 显形前摇有 0.85 秒，必须等它走完再断言突刺（固定帧数会随机器负载漂移）
+		await _wait_until(t, func() -> bool:
+			return (stalker as EnemyStalker).lunges >= 1, 300)
+		t.gte(float((stalker as EnemyStalker).lunges), 1.0, "显形后完成突刺")
+
+	# --- 裂晶虫：死亡分裂 ---
+	var grub: Enemy = world.spawn_enemy("crystal_grub", anchor + Vector2(0, 120))
+	t.not_null(grub, "生成裂晶虫")
+	if grub != null:
+		grub.data.contact_damage = 0.0
+		grub.activate()
+		var before_alive: int = world.alive_enemy_count()
+		CombatUtil.apply_hit(grub, 9999.0, false, Vector2.ZERO, 1)
+		t.check(grub.dead, "裂晶虫被击杀")
+		t.eq((grub as EnemySplitter).splits_done, 1, "裂晶虫分裂一次")
+		await _frames(t, 4)
+		t.eq((grub as EnemySplitter).shards_spawned.size(), EnemySplitter.SHARD_COUNT,
+				"分裂出 %d 块碎片" % EnemySplitter.SHARD_COUNT)
+		t.gt(float(world.alive_enemy_count()), float(before_alive), "碎片进入战场")
+		for shard: Variant in (grub as EnemySplitter).shards_spawned:
+			if is_instance_valid(shard):
+				# 碎片更脆但更快，且不会再分裂
+				t.lt((shard as Enemy).max_health, grub.max_health, "碎片血量低于母体")
+				t.gt(float((shard as Enemy).data.move_speed), float(grub.data.move_speed),
+						"碎片速度高于母体")
+				t.check(not (shard as Enemy) is EnemySplitter, "碎片不会继续分裂")
+		# 收掉碎片：它们是近战怪，接触击退会把玩家一路推走，
+		# 后面几个子用例都依赖"玩家与目标的距离"，留着会污染它们
+		for shard: Variant in (grub as EnemySplitter).shards_spawned:
+			if is_instance_valid(shard) and not (shard as Enemy).dead:
+				(shard as Enemy).die()
+		await _frames(t, 2)
+
+	# --- 穿地兽：潜行穿墙 + 破土预警 ---
+	var burrower: Enemy = world.spawn_enemy("burrower", anchor + Vector2(0, -120))
+	t.not_null(burrower, "生成穿地兽")
+	if burrower != null:
+		burrower.data.contact_damage = 0.0
+		burrower.activate()
+		burrower.set_target(player)
+		await _frames(t, 3)
+		# 潜入时应关闭碰撞（这是它能穿墙的唯一原因）
+		t.eq(burrower.collision_layer, 0, "潜行时碰撞层关闭（可穿墙）")
+		t.eq(burrower.collision_mask, 0, "潜行时碰撞掩码关闭")
+		# 破土前必须有地面预警（同时把玩家钉回基准点，排除被击退的干扰）
+		player.global_position = anchor
+		burrower.global_position = anchor + Vector2(50, 0)
+		var warned: bool = false
+		for i: int in range(40):
+			await t.get_tree().physics_frame
+			for child: Node in world.decal_root.get_children():
+				if child is Telegraph:
+					warned = true
+					break
+			if warned or burrower.eruptions > 0:
+				break
+		t.check(warned, "破土前在地面画出预警贴花（玩家有反应窗口）")
+		# 破土要等预警读条走完，用轮询而不是固定帧数
+		await _wait_until(t, func() -> bool: return burrower.eruptions > 0, 180)
+		t.gte(float(burrower.eruptions), 1.0, "穿地兽完成破土")
+		t.eq(burrower.collision_layer, G.LAYER_ENEMY, "破土后恢复碰撞")
+
+	# --- 晶巢母体：召唤 + 禁召期 ---
+	player.global_position = anchor
+	var mother: Enemy = world.spawn_enemy("brood_mother", anchor + Vector2(180, 60))
+	t.not_null(mother, "生成晶巢母体")
+	if mother != null:
+		mother.data.contact_damage = 0.0
+		mother.activate()
+		mother.set_target(player)
+		mother.global_position = anchor + Vector2(210, 0)
+		await _wait_until(t, func() -> bool: return (mother as EnemySummoner).summons_done >= 1, 240)
+		t.gte(float((mother as EnemySummoner).summons_done), 1.0, "母体完成一次召唤")
+		t.gte(float((mother as EnemySummoner).minions_alive()), 1.0, "召唤物在场上")
+		# 召唤物有寿命 -> 放着不管会自毁
+		for entry: Variant in (mother as EnemySummoner)._minions:
+			if is_instance_valid(entry):
+				t.gt(float((entry as Enemy).life_timer), 0.0, "召唤物带寿命计时（不会无限堆积）")
+		# 清空召唤物 -> 进入禁召期
+		for entry: Variant in (mother as EnemySummoner)._minions.duplicate():
+			if is_instance_valid(entry) and not (entry as Enemy).dead:
+				(entry as Enemy).die()
+		await _frames(t, 6)
+		t.check((mother as EnemySummoner).summon_locked(), "召唤物被清空后母体进入禁召期")
+		t.eq((mother as EnemySummoner).minions_alive(), 0, "召唤物已清空")
+
+	# --- 数据表自洽性 ---
+	t.eq(EnemyDB.create_data("crystal_grub", 1).split_into, "grub_shard", "裂晶虫配置了碎片 id")
+	t.check(EnemyDB.has_enemy("grub_shard"), "碎片 id 存在")
+	t.check(not EnemyDB.is_elite_id("grub_shard"), "碎片是独立基础怪而非精英")
+	t.gt(float(EnemyDB.create_data("brood_mother", 1).summon_life), 0.0, "母体召唤物有寿命")
+	t.check(EnemyData.Archetype.SUMMONER == 4 + 3, "新原型枚举值稳定")
+
+	player.clear_invulnerable()
+	player.global_position = anchor
+	await _free_world(t, world)
 
 
 # ==================== 公共工具 ====================
@@ -52,8 +198,15 @@ func _free_world(t: Node, world: GameWorld) -> void:
 		return
 	world.clear_entities(false)
 	world.queue_free()
-	await t.get_tree().process_frame
-	await t.get_tree().physics_frame
+	# 等到节点真正从场景树里消失再返回。queue_free 是「帧末」生效，
+	# 只等一帧的话，上一节留下的敌人/玩家可能还挂在 player / enemies 组里，
+	# 后面几节用 nearest_target 找目标就会找到已经作废的那一个，
+	# 表现为「拾取物不生成」「Boss 冲撞打不到人」这类莫名其妙的连锁失败。
+	for i: int in range(30):
+		await t.get_tree().process_frame
+		if not is_instance_valid(world):
+			break
+		await t.get_tree().physics_frame
 
 
 ## 把玩家变成"打不死但仍会受伤"的沙包：护盾清零 + 血线拉高 + 解除无敌
@@ -151,7 +304,15 @@ func _test_enemy_table(t: Node) -> void:
 	t.gt(elite.armor, husk.armor, "精英有护甲")
 	t.gt(elite.score, husk.score, "精英得分更高")
 	t.eq(EnemyDB.create_data("hexeye_elite").burst_count, 3, "精英 hexeye 一轮三连发")
-	t.eq(EnemyDB.ids().size(), 11, "共 11 个敌人 id（4 基础 + 4 精英 + 3 Boss）")
+	# 敌人 id 数量改为数据驱动：M9 新增 4 种行为原型（影袭者/裂晶虫/穿地兽/母巢）
+	# 与 2 个新 Boss，钉死数字会在每次加怪时都变成"测试失败"而不是"内容变多"。
+	var expected_ids: int = 0
+	for base_id: Variant in EnemyDB.base_ids():
+		expected_ids += 1
+		if int(EnemyDB.TABLE[base_id].get("archetype", 0)) != EnemyData.Archetype.BOSS:
+			expected_ids += 1  # 精英版
+	t.eq(EnemyDB.ids().size(), expected_ids, "敌人 id 总数 = 基础 + 精英（数据自洽）")
+	t.gte(expected_ids, 20, "敌人池已扩充到 20 个以上（含精英）")
 
 	# --- 层数成长 ---
 	var late: EnemyData = EnemyDB.create_data("husk", 3)

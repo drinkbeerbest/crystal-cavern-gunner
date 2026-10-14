@@ -17,9 +17,11 @@ extends Enemy
 ##   2. 召唤物由 world_node.spawn_enemy() 注入世界，死亡时同步清场，
 ##      场上小怪清零会广播 boss_minions_cleared（HUD toast「小怪已清空」）。
 
-enum Skill { NONE, RADIAL, FAN, SPIRAL, CHARGE, SUMMON, SLAM }
+enum Skill { NONE, RADIAL, FAN, SPIRAL, CHARGE, SUMMON, SLAM, SWEEP, MISSILES, BLINK }
 
-const SKILL_NAMES: Array[String] = ["none", "radial", "fan", "spiral", "charge", "summon", "slam"]
+const SKILL_NAMES: Array[String] = [
+	"none", "radial", "fan", "spiral", "charge", "summon", "slam", "sweep", "missiles", "blink",
+]
 
 ## 冲刺命中后追加的结算延迟（帧数），避免与撞墙眩晕同时触发
 const CHARGE_HIT_KNOCKBACK: float = 300.0
@@ -49,6 +51,8 @@ var _shot_angle: float = 0.0
 var _burst_left: int = 0
 var _wave_left: int = 0
 var _tick_left: int = 0
+## M9：导弹齐射剩余发数
+var _salvo_left: int = 0
 
 # ---------- 测试可观测计数 ----------
 var radials_fired: int = 0
@@ -57,12 +61,25 @@ var spirals_fired: int = 0
 var charges_done: int = 0
 var summons_done: int = 0
 var slams_done: int = 0
+## M9 新技能计数
+var sweeps_done: int = 0
+var missiles_fired: int = 0
+var blinks_done: int = 0
 var phase_switches: int = 0
 var summons_blocked_by_cap: int = 0
+
+# ---------- M9 扫射激光状态 ----------
+var _sweep_angle: float = 0.0
+var _sweep_dir: float = 1.0
+## 闪现：落点预警与位移中标记
+var _blink_target: Vector2 = Vector2.ZERO
+var _blink_timer: float = 0.0
 
 # ---------- 召唤 ----------
 var _minions: Array = []
 var _had_minions: bool = false
+## 召唤物被清空后的禁召倒计时（>0 时 Boss 不会选召唤技能）
+var _summon_lockout: float = 0.0
 
 
 # ==================== 生命周期 ====================
@@ -87,6 +104,7 @@ func _ready() -> void:
 	skill_cooldowns = {
 		Skill.RADIAL: 0.0, Skill.FAN: 1.0, Skill.SPIRAL: 1.6,
 		Skill.CHARGE: 0.8, Skill.SUMMON: 2.4, Skill.SLAM: 0.0,
+		Skill.SWEEP: 3.0, Skill.MISSILES: 4.0, Skill.BLINK: 2.0,
 	}
 	EventBus.boss_spawned.emit(self)
 
@@ -176,9 +194,16 @@ func _think(delta: float) -> void:
 
 func _tick_cooldowns(delta: float) -> void:
 	attack_cooldown = maxf(attack_cooldown - delta, 0.0)
+	if _summon_lockout > 0.0:
+		_summon_lockout = maxf(_summon_lockout - delta, 0.0)
 	for key: Variant in skill_cooldowns.keys():
 		if float(skill_cooldowns[key]) > 0.0:
 			skill_cooldowns[key] = float(skill_cooldowns[key]) - delta
+
+
+## 当前是否处于「刚清完召唤物」的禁召期
+func summon_locked() -> bool:
+	return _summon_lockout > 0.0
 
 
 func _cd_ready(kind: Skill) -> bool:
@@ -194,16 +219,30 @@ func _move_speed() -> float:
 
 
 ## 按 Boss 类型给出技能池（阶段 2 解锁新技能）
+## M9：weaver / lasher / husk_king 三类额外掌握扫射激光 / 追踪导弹 / 闪现，
+## 让"看弹幕躲"之外还有"读地面 + 打断位移"两种解法。
 func _skill_pool() -> Array:
 	var pool: Array
-	if str(data.id) == "weaver":
-		pool = [Skill.FAN, Skill.SPIRAL, Skill.SUMMON]
-		if phase_index >= 2:
-			pool.append(Skill.RADIAL)
-	else:
-		pool = [Skill.RADIAL, Skill.CHARGE, Skill.SUMMON]
-		if phase_index >= 2:
-			pool.append(Skill.FAN)
+	match str(data.id):
+		"weaver":
+			pool = [Skill.FAN, Skill.SPIRAL, Skill.SUMMON, Skill.SWEEP]
+			if phase_index >= 2:
+				pool.append(Skill.RADIAL)
+				pool.append(Skill.MISSILES)
+		"lasher":
+			pool = [Skill.CHARGE, Skill.FAN, Skill.SUMMON, Skill.BLINK]
+			if phase_index >= 2:
+				pool.append(Skill.SPIRAL)
+				pool.append(Skill.SLAM)
+		"husk_king":
+			pool = [Skill.RADIAL, Skill.SUMMON, Skill.SLAM, Skill.MISSILES]
+			if phase_index >= 2:
+				pool.append(Skill.SWEEP)
+				pool.append(Skill.BLINK)
+		_:
+			pool = [Skill.RADIAL, Skill.CHARGE, Skill.SUMMON]
+			if phase_index >= 2:
+				pool.append(Skill.FAN)
 	return pool
 
 
@@ -218,6 +257,9 @@ func _choose_skill(distance: float) -> Skill:
 			var index: int = (_rotation_index + i) % pool.size()
 			var kind: Skill = pool[index]
 			if not _cd_ready(kind):
+				continue
+			# 刚清完召唤物：进入禁召期，给玩家一个真正的反打窗口
+			if kind == Skill.SUMMON and _summon_lockout > 0.0:
 				continue
 			if kind == Skill.CHARGE and distance > data.charge_trigger_range * 1.15:
 				continue  # 太远冲过去浪费，留给距离近时再冲
@@ -240,27 +282,64 @@ func _start_skill(kind: Skill) -> void:
 		Skill.RADIAL:
 			skill_timer = data.radial_telegraph
 			_windup_ring(128.0, 0.75, Color(0.95, 0.5, 0.35, 0.8))
+			# 环形弹幕：Boss 自身就是圆心，画一圈环提示"站远一点"
+			_telegraph_ring(data.radial_speed * data.radial_wave_interval * 1.2,
+					data.radial_telegraph, Color(0.95, 0.55, 0.35, 0.85))
 		Skill.FAN:
 			skill_timer = data.fan_aim_time
 			_shot_dir = _dir_to_target()
 			_windup_ring(104.0, 0.6, Color(1.0, 0.62, 0.4, 0.8))
+			# 扇形弹幕：精确画出锁定方向的扇面，玩家横向拉开就能躲开
+			_telegraph_cone(data.fan_speed * 0.85, data.fan_spread_deg, data.fan_aim_time,
+					Color(1.0, 0.62, 0.35, 0.85), global_position)
 		Skill.SPIRAL:
 			skill_timer = SPIRAL_WINDUP
 			_shot_angle = _dir_to_target().angle()
 			_windup_ring(96.0, 0.55, Color(0.72, 0.55, 1.0, 0.8))
+			_telegraph_circle(data.spiral_speed * 0.8, SPIRAL_WINDUP, Color(0.74, 0.58, 1.0, 0.8))
 		Skill.CHARGE:
 			skill_timer = data.charge_windup
 			_shot_dir = _dir_to_target()
 			_windup_ring(58.0, 0.7, Color(1.0, 0.85, 0.4, 0.9))
+			# 冲撞：一条走廊，玩家必须横向闪避
+			_telegraph_line(data.charge_windup, Color(1.0, 0.82, 0.35, 0.9))
 			AudioMgr.play_sfx("boss_charge", 0.0, -6.0)
 		Skill.SUMMON:
 			skill_timer = data.summon_windup
 			_windup_ring(86.0, 0.8, Color(0.6, 1.0, 0.75, 0.85))
+			_telegraph_circle(110.0, data.summon_windup, Color(0.6, 1.0, 0.75, 0.8))
 			AudioMgr.play_sfx("boss_summon", 0.0, -6.0)
 		Skill.SLAM:
 			skill_timer = data.slam_windup
 			_windup_ring(data.slam_radius, 0.95, Color(1.0, 0.45, 0.3, 0.9))
+			# 砸地：红圈就是真实判定范围，站在圈里必吃
+			_telegraph_circle(data.slam_radius, data.slam_windup, Color(1.0, 0.36, 0.28, 0.92))
 			AudioMgr.play_sfx("boss_charge", 0.0, -8.0)
+		Skill.SWEEP:
+			skill_timer = data.sweep_windup
+			_shot_angle = _dir_to_target().angle()
+			# 扫射起点固定在玩家方向，偏一个来回扫的幅度
+			_sweep_angle = _shot_angle - deg_to_rad(data.sweep_degrees) * 0.5
+			_sweep_dir = 1.0
+			_windup_ring(70.0, 0.8, Color(1.0, 0.45, 0.85, 0.85))
+			_telegraph_cone(data.sweep_length, data.sweep_degrees, data.sweep_windup,
+					Color(1.0, 0.45, 0.85, 0.8), global_position)
+			AudioMgr.play_sfx("boss_charge", 0.0, -6.0)
+		Skill.MISSILES:
+			skill_timer = data.missile_windup
+			_windup_ring(80.0, 0.8, Color(0.55, 0.85, 1.0, 0.85))
+			_telegraph_circle(90.0, data.missile_windup, Color(0.55, 0.85, 1.0, 0.75))
+			AudioMgr.play_sfx("boss_summon", 0.0, -6.0)
+		Skill.BLINK:
+			skill_timer = data.blink_windup
+			# 闪现落点：玩家当前位置附近随机偏移——落点必须提前画出来，
+			# 否则玩家会被"凭空出现在脸上"打中，那是纯粹的 unfair
+			var anchor: Vector2 = target.global_position if (target != null and is_instance_valid(target)) \
+					else global_position
+			var scatter_angle: float = _rng.randf() * TAU
+			_blink_target = anchor + Vector2.from_angle(scatter_angle) * data.blink_range
+			_telegraph_circle(data.blink_blast_radius, data.blink_windup, Color(0.75, 0.55, 1.0, 0.9))
+			AudioMgr.play_sfx("skill", 0.0, -6.0)
 		_:
 			pass
 
@@ -270,6 +349,40 @@ func _windup_ring(radius: float, alpha: float, tint: Color) -> void:
 	Fx.play(_fx_host(), "ring", global_position, {
 		"fps": 10.0, "scale": radius / 34.0, "z_index": 8, "tint": tint,
 	})
+
+
+# ---------- 地面危险区预警 ----------
+## 上一版只有一圈扩散的 ring：玩家看不出"会打到哪里"，也倒不出还剩多久。
+## 现在每招配一个精确形状的地面贴花（圆/环/扇/走廊），随读条填满，最后 25% 闪烁。
+## 贴花挂在世界层的 decal 层：盖住地板、被角色遮住，既看得清范围又不挡操作。
+
+func _telegraph_circle(radius: float, life: float, color: Color) -> void:
+	Telegraph.circle(_decal_host(), global_position, radius, life, color)
+
+
+func _telegraph_ring(radius: float, life: float, color: Color) -> void:
+	Telegraph.ring(_decal_host(), global_position, radius, life, color)
+
+
+func _telegraph_cone(radius: float, half_angle_deg: float, life: float, color: Color,
+		from_position: Vector2) -> void:
+	Telegraph.cone(_decal_host(), from_position, _shot_dir, radius, half_angle_deg, life, color)
+
+
+func _telegraph_line(life: float, color: Color) -> void:
+	# 冲撞走廊：从 Boss 脚下沿锁定方向铺出去，长度按"冲刺时长 × 冲刺速度"估算
+	var reach: float = data.charge_speed * maxf(data.charge_duration, 0.1) * 1.15
+	Telegraph.line(_decal_host(), global_position, _shot_dir, reach, data.body_radius + 10.0,
+			life, color)
+
+
+## 贴花宿主：优先世界层注入的 decal 层（地板之上、角色之下），
+## 没有就退回特效层，保证任何装配下都能画出来。
+func _decal_host() -> Node2D:
+	if decal_layer != null and is_instance_valid(decal_layer):
+		return decal_layer
+	var parent: Node = get_parent()
+	return parent as Node2D if parent is Node2D else _fx_host()
 
 
 func _tick_skill(delta: float) -> void:
@@ -297,6 +410,12 @@ func _tick_skill(delta: float) -> void:
 		Skill.SLAM:
 			# SLAM 在 _enter_skill_active 里即时执行并结束，这里只兜底防残留
 			_finish_skill()
+		Skill.SWEEP:
+			_tick_sweep(delta)
+		Skill.MISSILES:
+			_tick_missiles(delta)
+		Skill.BLINK:
+			_tick_blink(delta)
 		_:
 			_finish_skill()
 
@@ -332,6 +451,22 @@ func _enter_skill_active() -> void:
 			_do_slam()
 			_finish_skill()
 			return
+		Skill.SWEEP:
+			_sweep_angle = _shot_angle - deg_to_rad(data.sweep_degrees) * 0.5
+			_sweep_dir = 1.0
+			skill_timer = 0.0
+			AudioMgr.play_sfx("boss_roar", 0.0, -6.0)
+		Skill.MISSILES:
+			_salvo_left = maxi(data.missile_count, 1)
+			skill_timer = 0.0
+			AudioMgr.play_sfx("boss_charge", 0.0, -6.0)
+		Skill.BLINK:
+			skill_timer = 0.0
+			# 位移途中关掉碰撞：既不会被玩家打断，也不该在"半空"里结算接触伤害
+			_blink_timer = maxf(data.blink_travel_time, 0.02)
+			collision_layer = 0
+			collision_mask = 0
+			AudioMgr.play_sfx("skill", 0.0, -4.0)
 		_:
 			_finish_skill()
 			return
@@ -416,6 +551,89 @@ func _tick_charge(delta: float) -> void:
 		_finish_skill()
 
 
+# ---------- M9 新技能 ----------
+
+## 扫射激光：一条从 Boss 发出、缓慢来回扫过指定角度的长条判定。
+## 与扇形弹幕的区别——扇形是一次性撒弹，这根光束是**持续站在里面就持续掉血**，
+## 所以它逼玩家"在光束扫到之前跑出扇区"，而不是"找空隙钻弹流"。
+func _tick_sweep(delta: float) -> void:
+	skill_timer += delta
+	var total: float = maxf(data.sweep_duration, 0.2)
+	var span: float = deg_to_rad(maxf(data.sweep_degrees, 10.0))
+	if skill_timer >= total:
+		sweeps_done += 1
+		_finish_skill()
+		return
+	move_velocity = Vector2.ZERO
+	var t: float = skill_timer / total
+	# 三角波：0→1→0 来回扫
+	var phase: float = t * 2.0 if t <= 0.5 else (1.0 - t) * 2.0
+	_sweep_angle = _shot_angle - span * 0.5 + span * phase
+	var half: float = deg_to_rad(data.sweep_half_width_deg)
+	var reach: float = maxf(data.sweep_length, 40.0)
+	# 沿光束分段判定，保证"站在里面"每帧都在挨打
+	var steps: int = 6
+	for i: int in range(1, steps + 1):
+		var at: Vector2 = global_position + Vector2.from_angle(_sweep_angle) * (reach * float(i) / float(steps))
+		CombatUtil.area_damage(self, at, 16.0, data.sweep_dps * delta, false, 0.0,
+				get_instance_id(), G.LAYER_PLAYER, [])
+	# 光束表现：每帧画一段拉伸的光带
+	var beam := LaserBeam.new()
+	beam.setup(reach, 7.0, Color(1.0, 0.45, 0.85, 0.9), 0.0)
+	beam.rotation = _sweep_angle
+	beam.position = global_position
+	_fx_host().add_child(beam)
+	if fmod(skill_timer, 0.12) < delta:
+		AudioMgr.play_sfx("shoot_laser", 0.02, -10.0)
+
+
+## 追踪导弹：分批发射会自动修正的慢速弹。
+## 慢 = 可读 = 可躲。它的价值在于**逼玩家换位**，而不是瞬间秒杀。
+func _tick_missiles(delta: float) -> void:
+	skill_timer -= delta
+	if skill_timer > 0.0:
+		return
+	if _salvo_left <= 0:
+		missiles_fired += 1
+		_finish_skill()
+		return
+	_salvo_left -= 1
+	var base_angle: float = _dir_to_target().angle()
+	for i: int in range(maxi(data.missile_count / maxi(data.missile_count, 1), 1)):
+		var angle: float = base_angle + TAU * float(i) / float(maxi(data.missile_count, 1))
+		var bullet: Bullet = fire_bullet(Vector2.from_angle(angle), data.missile_damage,
+				maxf(data.missile_speed, 60.0), 4.0, 6.0)
+		if bullet != null:
+			bullet.homing = maxf(data.missile_homing, 0.0)
+			bullet.trail_interval = 0.04
+	skill_timer = maxf(data.missile_wave_interval, 0.1)
+	AudioMgr.play_sfx("shoot_rifle", 0.03, -8.0)
+
+
+## 闪现：瞬移到玩家附近的落点，落点有范围伤害。
+## 它给的是**位置压力**——Boss 不再是"站在那儿挨打"的固定靶，
+## 逼迫玩家边打边重新站位。
+func _tick_blink(delta: float) -> void:
+	_blink_timer -= delta
+	if _blink_timer > 0.0:
+		# 位移途中：站桩不动，碰撞仍然是关的
+		move_velocity = Vector2.ZERO
+		return
+	# 落点：贴到预警位置并炸一圈
+	collision_layer = G.LAYER_ENEMY
+	collision_mask = G.MASK_ENEMY
+	global_position = _blink_target
+	blinks_done += 1
+	AudioMgr.play_sfx("boss_slam", 0.0, -6.0)
+	Fx.play(_fx_host(), "level_ring", global_position, {
+		"fps": 20.0, "scale": data.blink_blast_radius / 40.0, "z_index": 14,
+		"tint": Color(0.75, 0.55, 1.0, 0.9),
+	})
+	CombatUtil.area_damage(self, global_position, data.blink_blast_radius, data.blink_damage, false,
+			data.blink_knockback, get_instance_id(), G.LAYER_PLAYER, [])
+	_finish_skill()
+
+
 ## 召唤小怪：到上限则跳过（不推进召唤计数）
 func _do_summon() -> void:
 	var alive_minions: int = _minions_alive()
@@ -470,6 +688,12 @@ func _finish_skill() -> void:
 				skill_cooldowns[Skill.SUMMON] = data.summon_cooldown * _cooldown_mult()
 			Skill.SLAM:
 				skill_cooldowns[Skill.SLAM] = data.slam_cooldown * _cooldown_mult()
+			Skill.SWEEP:
+				skill_cooldowns[Skill.SWEEP] = data.sweep_cooldown * _cooldown_mult()
+			Skill.MISSILES:
+				skill_cooldowns[Skill.MISSILES] = data.missile_cooldown * _cooldown_mult()
+			Skill.BLINK:
+				skill_cooldowns[Skill.BLINK] = data.blink_cooldown * _cooldown_mult()
 			_:
 				pass
 	skill_context = Skill.NONE
@@ -581,13 +805,17 @@ func _kill_minions() -> void:
 	_had_minions = false
 
 
-## 场上小怪从有到无：广播「小怪已清空」（HUD 用它做提示）
+## 场上小怪从有到无：广播「小怪已清空」并开启禁召期
 func _track_minions() -> void:
 	if dead or not activated or _minions.is_empty():
 		return
 	var alive: int = _minions_alive()
 	if _had_minions and alive == 0:
 		_had_minions = false
+		_minions.clear()
+		# 关键：清空不等于立刻能再召。给玩家 summon_clear_delay 秒的喘息，
+		# 否则 Boss 的召唤冷却会在小怪被打光的同时转好，变成无解的杂兵循环。
+		_summon_lockout = maxf(data.summon_clear_delay, 0.0)
 		EventBus.boss_minions_cleared.emit(self)
 	elif alive > 0:
 		_had_minions = true

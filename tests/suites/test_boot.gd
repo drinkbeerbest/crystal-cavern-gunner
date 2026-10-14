@@ -173,8 +173,13 @@ func _test_gold(t: Node) -> void:
 
 func _test_talents(t: Node) -> void:
 	GameState.new_run(777)
-	var base_speed: float = float(G.DEFAULT_PLAYER_STATS["move_speed"])
-	t.near(GameState.stat_value("move_speed"), base_speed, 0.001, "无天赋时移速为默认值")
+	# 基准取「当前角色的」实际属性，而不是 DEFAULT_PLAYER_STATS——
+	# 引入角色系统后，不同角色的移速/暴击本来就不同，这里要验的是
+	# 「临时天赋的加值与还原」，与角色无关。
+	var base_speed: float = float(GameState.stats.get("move_speed", 0.0))
+	var base_crit: float = float(GameState.stats.get("crit_chance", 0.0))
+	t.gt(base_speed, 0.0, "当前角色有有效移速基准")
+	t.near(GameState.stat_value("move_speed"), base_speed, 0.001, "无天赋时移速为当前角色基准")
 
 	GameState.add_talent({"id": "swift", "display_name": "疾风", "duration": 0.3, "modifiers": {"move_speed": 45.0}})
 	t.eq(GameState.talents.size(), 1, "天赋入列")
@@ -184,7 +189,7 @@ func _test_talents(t: Node) -> void:
 	t.eq(GameState.talents.size(), 1, "同 id 天赋不重复入列")
 
 	GameState.add_talent({"id": "killer", "display_name": "杀意", "duration": 1.0, "modifiers": {"crit_chance": 0.2}})
-	t.near(GameState.stat_value("crit_chance"), float(G.DEFAULT_PLAYER_STATS["crit_chance"]) + 0.2, 0.0001, "多个天赋同时生效")
+	t.near(GameState.stat_value("crit_chance"), base_crit + 0.2, 0.0001, "多个天赋同时生效")
 
 	GameState.tick_talents(0.35)
 	t.eq(GameState.talents.size(), 1, "到期天赋被移除")

@@ -15,6 +15,12 @@ enum Kind {
 	EXPLOSIVE,   ## 命中后范围爆炸（火箭筒）
 	HOMING,      ## 追踪弹（魔杖）
 	MELEE,       ## 近战挥砍（短刃）
+	## ---- M9：机制型弹道（不再是「瞄准→开火」）----
+	BOOMERANG,   ## 回旋镖：飞出后原路返回，返程再次命中同一批敌人
+	CHAIN,       ## 链式闪电：命中后在敌人之间跳跃
+	MINE,        ## 布雷：落在地上不消失，敌人靠近才炸
+	RICOCHET,    ## 弹跳弹：撞墙后改变方向继续飞
+	FROST,       ## 减速弹：命中给敌人挂减速
 }
 
 ## 稀有度（对应 assets/ui/rarity_0..3.png）
@@ -54,6 +60,17 @@ const RARITY_NAMES: Array[String] = ["普通", "精良", "稀有", "传说"]
 @export var homing_strength: float = 0.0    ## HOMING 转向强度（弧度/秒）
 @export var melee_range: float = 46.0       ## MELEE 攻击半径
 @export var melee_arc_deg: float = 110.0    ## MELEE 扇形半角
+# ---------- 机制型弹道参数 ----------
+@export var return_speed: float = 420.0     ## BOOMERANG 返程速度倍率（1.0 = 往返同速）
+@export var chain_targets: int = 3          ## CHAIN 最多跳跃的目标数
+@export var chain_range: float = 190.0      ## CHAIN 每次跳跃的最大距离
+@export var chain_falloff: float = 0.78     ## CHAIN 每跳一次的伤害衰减
+@export var mine_lifetime: float = 14.0     ## MINE 存在时间（秒）
+@export var mine_trigger_range: float = 46.0 ## MINE 引爆半径
+@export var mine_explosion_radius: float = 78.0 ## MINE 爆炸半径
+@export var ricochet_times: int = 3         ## RICOCHET 最多弹跳次数
+@export var slow_factor: float = 0.45       ## FROST 减速后的速度比例
+@export var slow_duration: float = 2.6      ## FROST 减速持续时间
 
 # ---------- 表现 ----------
 @export var sfx: String = "shoot_pistol"    ## AudioMgr.SFX 的逻辑名
@@ -121,6 +138,9 @@ const FIELDS: Array[String] = [
 	"crit_bonus", "knockback", "pierce", "bullet_lifetime", "auto_fire", "recoil",
 	"shake", "damage_variance", "beam_range", "explosion_radius", "homing_strength",
 	"melee_range", "melee_arc_deg", "sfx", "projectile_frames", "muzzle_offset",
+	"return_speed", "chain_targets", "chain_range", "chain_falloff",
+	"mine_lifetime", "mine_trigger_range", "mine_explosion_radius",
+	"ricochet_times", "slow_factor", "slow_duration",
 ]
 
 

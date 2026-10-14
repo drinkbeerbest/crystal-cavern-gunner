@@ -24,6 +24,7 @@ func suite_name() -> String:
 
 func run(t: Node) -> void:
 	_test_boss_table(t)
+	await _test_new_boss_skills(t)
 	await _test_spawn_and_contract(t)
 	await _test_hit_phase_and_interrupt(t)
 	await _test_skill_state_machine(t)
@@ -160,8 +161,103 @@ func _test_boss_table(t: Node) -> void:
 			"第 3 层 warden 血量按成长公式放大")
 	t.check(late.max_health > warden.max_health, "层数越高 Boss 越肉")
 
-	# 存活 id 数量回归：测试里已有敌人 id 数应为 11（4 基础 + 4 精英 + 3 Boss）
-	t.eq(EnemyDB.ids().size(), 11, "敌人 id 总数 = 11（4 基础 + 4 精英 + 3 Boss）")
+	# 存活 id 数量回归：改为数据驱动（M9 加了 4 种新原型 + 2 个新 Boss，
+	# 钉死 11 会让每次加怪都变成"测试失败"而不是"内容变多"）
+	var boss_count: int = 0
+	for base_id: Variant in EnemyDB.base_ids():
+		if int(EnemyDB.TABLE[base_id].get("archetype", 0)) == EnemyData.Archetype.BOSS:
+			boss_count += 1
+	t.gte(boss_count, 5, "Boss 数量已扩充到 5 个以上")
+	t.eq(EnemyDB.ids().size(), EnemyDB.base_ids().size() * 2 - boss_count,
+			"敌人 id 总数 = 基础 × 2 - Boss 数（数据自洽）")
+
+	await _test_new_boss_skills(t)
+
+
+## M9：三种新 Boss 技能（扫射激光 / 追踪导弹 / 闪现）的可执行性与公平性契约。
+## 断言只锁"必须成立"的部分：技能能进入、能跑完、会留下预警，
+## 以及冷却/爆发计数这些能被外部观测的状态。
+func _test_new_boss_skills(t: Node) -> void:
+	print("")
+	print("--- [Boss 新技能 M9] ---")
+	# 技能枚举扩展
+	t.check(EnemyBoss.Skill.SWEEP != EnemyBoss.Skill.NONE, "扫射激光是独立技能")
+	t.check(EnemyBoss.Skill.MISSILES != EnemyBoss.Skill.NONE, "追踪导弹是独立技能")
+	t.check(EnemyBoss.Skill.BLINK != EnemyBoss.Skill.NONE, "闪现是独立技能")
+	t.eq(EnemyBoss.SKILL_NAMES.size(), 10, "技能名表覆盖全部 10 个技能")
+
+	var world: GameWorld = _make_world(t)
+	if world == null:
+		return
+	var player: Player = world.player
+	player.set_invulnerable(999.0)
+
+	# 1) 追踪导弹：会分批发射带追踪的弹
+	var missiles: EnemyBoss = world.spawn_enemy("husk_king", Vector2(700, 320)) as EnemyBoss
+	t.not_null(missiles, "生成晶骸王座")
+	if missiles != null:
+		missiles.activate()
+		missiles.set_target(player)
+		t.check(EnemyBoss.Skill.MISSILES in missiles._skill_pool(), "晶骸王座会追踪导弹")
+		missiles.skill_cooldowns[EnemyBoss.Skill.MISSILES] = -1.0
+		missiles.attack_cooldown = 0.0
+		missiles._start_skill(EnemyBoss.Skill.MISSILES)
+		await _wait_until(t, func() -> bool:
+			return missiles.skill_context == EnemyBoss.Skill.NONE, 300)
+		t.gte(float(missiles.missiles_fired), 1.0, "追踪导弹完成一次齐射")
+
+	# 2) 闪现：落点必有预警圈，且位移后恢复碰撞
+	var blinker: EnemyBoss = world.spawn_enemy("lasher", Vector2(760, 320)) as EnemyBoss
+	t.not_null(blinker, "生成晶镰领主")
+	if blinker != null:
+		blinker.activate()
+		blinker.set_target(player)
+		t.check(EnemyBoss.Skill.BLINK in blinker._skill_pool(), "晶镰领主会闪现")
+		# 预警阶段必须在 decal 层留下危险区
+		blinker.skill_cooldowns[EnemyBoss.Skill.BLINK] = -1.0
+		blinker.attack_cooldown = 0.0
+		blinker._start_skill(EnemyBoss.Skill.BLINK)
+		await t.get_tree().physics_frame
+		var warned: bool = false
+		for child: Node in world.decal_root.get_children():
+			if child is Telegraph:
+				warned = true
+				break
+		t.check(warned, "闪现落点提前画出预警圈（不会凭空贴脸）")
+		# 碰撞关闭发生在「预警结束、真正开始位移」的那一刻，不是起手那一刻
+		await _wait_until(t, func() -> bool:
+			return blinker.skill_phase == "active", 200)
+		t.eq(blinker.collision_layer, 0, "闪现位移途中碰撞关闭")
+		await _wait_until(t, func() -> bool: return blinker.blinks_done > 0, 300)
+		t.gte(float(blinker.blinks_done), 1.0, "闪现完成一次位移")
+		t.eq(blinker.collision_layer, G.LAYER_ENEMY, "闪现结束后恢复碰撞")
+
+	# 3) 扫射激光：织弹者会来回扫
+	var sweeper: EnemyBoss = world.spawn_enemy("weaver", Vector2(820, 320)) as EnemyBoss
+	t.not_null(sweeper, "生成织弹者")
+	if sweeper != null:
+		sweeper.activate()
+		sweeper.set_target(player)
+		t.check(EnemyBoss.Skill.SWEEP in sweeper._skill_pool(), "织弹者会扫射激光")
+		sweeper.skill_cooldowns[EnemyBoss.Skill.SWEEP] = -1.0
+		sweeper.attack_cooldown = 0.0
+		sweeper._start_skill(EnemyBoss.Skill.SWEEP)
+		await _wait_until(t, func() -> bool:
+			return sweeper.skill_context == EnemyBoss.Skill.NONE, 400)
+		t.gte(float(sweeper.sweeps_done), 1.0, "扫射激光完整跑完一次")
+
+	# 4) 数值表自洽：三招都必须有正的伤害与有限时长
+	var weaver_data: EnemyData = EnemyDB.create_data("weaver", 1)
+	t.gt(weaver_data.sweep_dps, 0.0, "扫射激光有持续伤害")
+	t.gt(weaver_data.sweep_duration, 0.0, "扫射激光有持续时间")
+	t.gt(weaver_data.missile_damage, 0.0, "追踪导弹有伤害")
+	t.lt(weaver_data.missile_speed, 300.0, "追踪导弹刻意慢速（可躲）")
+	t.gt(weaver_data.blink_damage, 0.0, "闪现有落点伤害")
+	t.gt(weaver_data.blink_windup, 0.2, "闪现有足够长的预警")
+
+	player.clear_invulnerable()
+	world.queue_free()
+	await t.get_tree().process_frame
 
 
 # ==================== 2. 生成装配 ====================
